@@ -295,13 +295,7 @@ func ensureTLSCert(certPath, keyPath string) error {
    ---------------------------
 */
 
-func main() {
-	certPath := "certs/server.crt"
-	keyPath := "certs/server.key"
-
-	if err := ensureTLSCert(certPath, keyPath); err != nil {
-		log.Fatalf("failed to ensure TLS certs: %v", err)
-	}
+func getRemoteGatewayRotuer() http.Handler {
 
 	gw := protocol.Gateway{
 		ServerConf: &protocol.ServerConf{
@@ -353,6 +347,13 @@ func main() {
 
 	mux.Handle("/remoteDesktopGateway/", gatewayHandler)
 	//mux.Handle("/rpc/rpcproxy.dll", gatewayHandler)
+	return mux
+
+}
+
+func main() {
+
+	mux := getRemoteGatewayRotuer()
 
 	srv := &http.Server{
 		Addr:      ":8443",
@@ -371,9 +372,13 @@ func main() {
 		},
 	}
 
+	certPath := "certs/server.crt"
+	keyPath := "certs/server.key"
+
+	if err := ensureTLSCert(certPath, keyPath); err != nil {
+		log.Fatalf("failed to ensure TLS certs: %v", err)
+	}
+
 	log.Println("Starting RDP Gateway with LDAP auth on :443")
-	log.Fatal(srv.ListenAndServeTLS(
-		certPath,
-		keyPath,
-	))
+	log.Fatal(srv.ListenAndServeTLS(certPath, keyPath))
 }
