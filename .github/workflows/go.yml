@@ -37,9 +37,6 @@ jobs:
       # -------------------------------
       # Build & test
       # -------------------------------
-      - name: Build
-        run: make all
-
       - name: Lint
         run: make lint
 
