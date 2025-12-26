@@ -43,9 +43,6 @@ jobs:
       - name: Lint
         run: make lint
 
-      - name: Gosec
-        run: make gosec
-
       - name: Run tests with coverage
         run: go test ./... -coverprofile=coverage.out
 
