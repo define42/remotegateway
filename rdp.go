@@ -228,6 +228,7 @@ func rdpFileContent(gatewayHost, targetHost string) string {
 		b.WriteString(line)
 		b.WriteString("\r\n")
 	}
+	write("screen mode id:i:2")
 	write("full address:s:" + targetHost)
 	write("gatewayhostname:s:" + gatewayHost)
 	write("gatewayusagemethod:i:2")

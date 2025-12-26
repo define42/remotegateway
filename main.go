@@ -37,8 +37,8 @@ type StaticAuth struct {
 	challenges map[string]ntlmChallengeState
 }
 
-const staticUser = "hackers"
-const staticPassword = "dogood"
+const staticUser = "ubuntu"
+const staticPassword = "ubuntu"
 
 type authChallenge struct {
 	header string
@@ -312,7 +312,7 @@ func verifyServer(ctx context.Context, host string) (bool, error) {
 
 func resolveTarget(user string) (string, error) {
 	switch strings.ToLower(normalizeUser(user)) {
-	case "hackers":
+	case "ubuntu":
 		return "workstation:3389", nil
 	case "bob":
 		return "10.0.0.11:3389", nil
