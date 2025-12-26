@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  workstation:
+    image:  scottyhardy/docker-remote-desktop:latest
+    restart: always
+    environment:
+      REGISTRY_HTTP_ADDR: :5000
+      REGISTRY_STORAGE_DELETE_ENABLED: true
+
+
+  gateway:
+    build: ./
+    restart: always
+    ports:
+      - "8443:8443"
+    depends_on:
+      - workstation
