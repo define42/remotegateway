@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -52,7 +51,6 @@ func (a *StaticAuth) Authenticate(
 	ctx context.Context,
 	r *http.Request,
 ) (string, error) {
-	fmt.Println("StaticAuth Authenticate called", r)
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader != "" {
 		fields := strings.Fields(authHeader)
@@ -398,7 +396,7 @@ func main() {
 		w.Write([]byte("ok\n"))
 	})
 
-	mux.Handle("/rdgateway/", gatewayHandler)
+	//mux.Handle("/rdgateway/", gatewayHandler)
 
 	mux.Handle("/remoteDesktopGateway/", gatewayHandler)
 	//mux.Handle("/rpc/rpcproxy.dll", gatewayHandler)
