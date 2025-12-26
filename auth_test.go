@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -127,5 +128,93 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 	}
 	if _, ok := auth.challenges[key]; ok {
 		t.Fatalf("expected challenge to be consumed")
+	}
+}
+
+func TestBasicAuthMiddlewareSuccess(t *testing.T) {
+	auth := &StaticAuth{}
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.SetBasicAuth(staticUser, staticPassword)
+
+	var gotUser string
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := authUserFromContext(r.Context())
+		if !ok {
+			t.Fatalf("expected auth user in context")
+		}
+		gotUser = user
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	rec := httptest.NewRecorder()
+	basicAuthMiddleware(auth, next).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rec.Code)
+	}
+	if gotUser != staticUser {
+		t.Fatalf("expected user %q, got %q", staticUser, gotUser)
+	}
+}
+
+func TestBasicAuthMiddlewareMissingCredentials(t *testing.T) {
+	auth := &StaticAuth{}
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+	})
+
+	rec := httptest.NewRecorder()
+	basicAuthMiddleware(auth, next).ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatalf("expected next handler not to be called")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	values := rec.Header().Values("WWW-Authenticate")
+	if len(values) != 1 || values[0] != `Basic realm="rdpgw"` {
+		t.Fatalf("expected Basic realm challenge, got %v", values)
+	}
+}
+
+func TestBasicAuthMiddlewareChallenge(t *testing.T) {
+	auth := &StaticAuth{}
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.Header.Set("Authorization", "NTLM")
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+	})
+
+	rec := httptest.NewRecorder()
+	basicAuthMiddleware(auth, next).ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatalf("expected next handler not to be called")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	values := rec.Header().Values("WWW-Authenticate")
+	if len(values) != 2 {
+		t.Fatalf("expected two WWW-Authenticate headers, got %v", values)
+	}
+	hasNTLM := false
+	hasBasic := false
+	for _, v := range values {
+		if v == "NTLM" {
+			hasNTLM = true
+		}
+		if v == `Basic realm="rdpgw"` {
+			hasBasic = true
+		}
+	}
+	if !hasNTLM || !hasBasic {
+		t.Fatalf("expected NTLM and Basic challenges, got %v", values)
 	}
 }
