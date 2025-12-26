@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -51,34 +52,45 @@ func (a *StaticAuth) Authenticate(
 	ctx context.Context,
 	r *http.Request,
 ) (string, error) {
+
+	fmt.Println(r)
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader != "" {
-		fields := strings.Fields(authHeader)
-		if len(fields) > 0 && strings.EqualFold(fields[0], "NTLM") {
-			if len(fields) < 2 {
-				return "", a.ntlmChallengeError(r)
+		scheme, token := splitAuthHeader(authHeader)
+		if scheme != "" && (strings.EqualFold(scheme, "NTLM") || strings.EqualFold(scheme, "Negotiate")) {
+			canonicalScheme := canonicalAuthScheme(scheme)
+			if token == "" {
+				return "", authChallenge{header: canonicalScheme}
 			}
-			decoded, err := base64.StdEncoding.DecodeString(fields[1])
+			decoded, err := base64.StdEncoding.DecodeString(token)
 			if err != nil {
-				log.Printf("Invalid NTLM token from %s: %v", r.RemoteAddr, err)
-				return "", a.ntlmChallengeError(r)
+				log.Printf("%s token decode failed from %s: %v", canonicalScheme, r.RemoteAddr, err)
+				return "", authChallenge{header: canonicalScheme}
 			}
-			msgType, err := ntlmMessageType(decoded)
+			ntlmToken := decoded
+			if canonicalScheme == "Negotiate" {
+				ntlmToken, err = extractNTLMToken(decoded)
+				if err != nil {
+					log.Printf("Negotiate token missing NTLM for %s: %v", r.RemoteAddr, err)
+					return "", authChallenge{header: canonicalScheme}
+				}
+			}
+			msgType, err := ntlmMessageType(ntlmToken)
 			if err != nil {
 				log.Printf("Invalid NTLM message from %s: %v", r.RemoteAddr, err)
-				return "", a.ntlmChallengeError(r)
+				return "", authChallenge{header: canonicalScheme}
 			}
 			switch msgType {
 			case ntlmMessageTypeNegotiate:
-				return "", a.ntlmChallengeError(r)
+				return "", a.ntlmChallengeError(r, canonicalScheme)
 			case ntlmMessageTypeAuthenticate:
-				user, err := a.verifyNTLMAuthenticate(r, decoded)
+				user, err := a.verifyNTLMAuthenticate(r, ntlmToken, canonicalScheme)
 				if err != nil {
 					return "", err
 				}
 				return normalizeUser(user), nil
 			default:
-				return "", a.ntlmChallengeError(r)
+				return "", authChallenge{header: canonicalScheme}
 			}
 		}
 	}
@@ -92,6 +104,26 @@ func (a *StaticAuth) Authenticate(
 	}
 
 	return normalizeUser(username), nil
+}
+
+func splitAuthHeader(header string) (string, string) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "", ""
+	}
+	for i, r := range header {
+		if r == ' ' || r == '\t' {
+			return header[:i], strings.TrimSpace(header[i+1:])
+		}
+	}
+	return header, ""
+}
+
+func canonicalAuthScheme(scheme string) string {
+	if strings.EqualFold(scheme, "Negotiate") {
+		return "Negotiate"
+	}
+	return "NTLM"
 }
 
 /*
@@ -390,6 +422,26 @@ func main() {
 	gatewayHandler = common.EnrichContext(gatewayHandler)
 
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/rdpgw.rdp", func(w http.ResponseWriter, r *http.Request) {
+		gatewayHost := gatewayHostFromRequest(r)
+		rdpContent := rdpFileContent(gatewayHost, defaultRDPAddress)
+
+		w.Header().Set("Content-Type", "application/x-rdp")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+rdpFilename+`"`)
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(rdpContent))
+	})
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		gatewayHost := gatewayHostFromRequest(r)
+		renderIndexPage(w, gatewayHost, defaultRDPAddress)
+	})
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

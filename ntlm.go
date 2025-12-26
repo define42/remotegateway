@@ -43,12 +43,15 @@ type ntlmChallengeState struct {
 	issuedAt  time.Time
 }
 
-func (a *StaticAuth) ntlmChallengeError(r *http.Request) error {
+func (a *StaticAuth) ntlmChallengeError(r *http.Request, scheme string) error {
 	challenge, err := a.issueNTLMChallenge(r)
 	if err != nil {
 		return err
 	}
-	return authChallenge{header: "NTLM " + challenge}
+	if scheme == "" {
+		scheme = "NTLM"
+	}
+	return authChallenge{header: scheme + " " + challenge}
 }
 
 func (a *StaticAuth) issueNTLMChallenge(r *http.Request) (string, error) {
@@ -108,25 +111,25 @@ func (a *StaticAuth) takeNTLMChallenge(r *http.Request) ([]byte, bool) {
 	return challengeCopy, true
 }
 
-func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte) (string, error) {
+func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte, scheme string) (string, error) {
 	msg, err := parseNTLMAuthenticateMessage(data)
 	if err != nil {
 		log.Printf("Invalid NTLM authenticate message from %s: %v", r.RemoteAddr, err)
-		return "", a.ntlmChallengeError(r)
+		return "", a.ntlmChallengeError(r, scheme)
 	}
 	challenge, ok := a.takeNTLMChallenge(r)
 	if !ok {
 		log.Printf("Missing NTLM challenge for %s", ntlmChallengeKey(r))
-		return "", a.ntlmChallengeError(r)
+		return "", a.ntlmChallengeError(r, scheme)
 	}
 	if normalizeUser(msg.UserName) != staticUser {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
-		return "", a.ntlmChallengeError(r)
+		return "", a.ntlmChallengeError(r, scheme)
 	}
 	ntlmV2Hash := ntlmV2Hash(staticPassword, msg.UserName, msg.DomainName)
 	if !verifyNTLMv2Response(challenge, ntlmV2Hash, msg.NtChallengeResponse) {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
-		return "", a.ntlmChallengeError(r)
+		return "", a.ntlmChallengeError(r, scheme)
 	}
 	return msg.UserName, nil
 }
@@ -146,6 +149,21 @@ func ntlmMessageType(data []byte) (uint32, error) {
 		return 0, errors.New("invalid NTLM signature")
 	}
 	return binary.LittleEndian.Uint32(data[8:12]), nil
+}
+
+func extractNTLMToken(data []byte) ([]byte, error) {
+	if len(data) >= 12 && bytes.Equal(data[:8], []byte(ntlmSignature)) {
+		return data, nil
+	}
+	idx := bytes.Index(data, []byte(ntlmSignature))
+	if idx < 0 {
+		return nil, errors.New("NTLM signature not found")
+	}
+	token := data[idx:]
+	if _, err := ntlmMessageType(token); err != nil {
+		return nil, err
+	}
+	return token, nil
 }
 
 type ntlmMessageHeader struct {
