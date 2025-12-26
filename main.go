@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -10,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -21,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bolkedebruin/rdpgw/common"
@@ -33,11 +32,13 @@ import (
    ---------------------------
 */
 
-type StaticAuth struct{}
+type StaticAuth struct {
+	mu         sync.Mutex
+	challenges map[string]ntlmChallengeState
+}
 
 const staticUser = "hackers"
 const staticPassword = "dogood"
-const ntlmHeaderPrefix = "NTLM "
 
 type authChallenge struct {
 	header string
@@ -52,36 +53,36 @@ func (a *StaticAuth) Authenticate(
 	r *http.Request,
 ) (string, error) {
 	fmt.Println("StaticAuth Authenticate called", r)
-	authHeader := r.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, ntlmHeaderPrefix) {
-		payload := strings.TrimSpace(strings.TrimPrefix(authHeader, ntlmHeaderPrefix))
-		if payload == "" {
-			return "", authChallenge{header: "NTLM"}
-		}
-		decoded, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return "", errors.New("invalid NTLM token")
-		}
-
-		if len(decoded) >= 12 && bytes.HasPrefix(decoded, []byte("NTLMSSP\x00")) {
-			msgType := binary.LittleEndian.Uint32(decoded[8:12])
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authHeader != "" {
+		fields := strings.Fields(authHeader)
+		if len(fields) > 0 && strings.EqualFold(fields[0], "NTLM") {
+			if len(fields) < 2 {
+				return "", a.ntlmChallengeError(r)
+			}
+			decoded, err := base64.StdEncoding.DecodeString(fields[1])
+			if err != nil {
+				log.Printf("Invalid NTLM token from %s: %v", r.RemoteAddr, err)
+				return "", a.ntlmChallengeError(r)
+			}
+			msgType, err := ntlmMessageType(decoded)
+			if err != nil {
+				log.Printf("Invalid NTLM message from %s: %v", r.RemoteAddr, err)
+				return "", a.ntlmChallengeError(r)
+			}
 			switch msgType {
-			case 1:
-				challenge, err := buildFakeNTLMChallenge()
+			case ntlmMessageTypeNegotiate:
+				return "", a.ntlmChallengeError(r)
+			case ntlmMessageTypeAuthenticate:
+				user, err := a.verifyNTLMAuthenticate(r, decoded)
 				if err != nil {
 					return "", err
 				}
-				return "", authChallenge{header: "NTLM " + challenge}
-			case 3:
-				log.Printf("Accepted NTLM auth header, size=%d", len(decoded))
-				return staticUser, nil
+				return normalizeUser(user), nil
 			default:
-				return "", errors.New("unsupported NTLM message type")
+				return "", a.ntlmChallengeError(r)
 			}
 		}
-
-		log.Printf("Accepted opaque NTLM auth header, size=%d", len(decoded))
-		return staticUser, nil
 	}
 
 	username, password, ok := r.BasicAuth()
@@ -93,17 +94,6 @@ func (a *StaticAuth) Authenticate(
 	}
 
 	return normalizeUser(username), nil
-}
-
-func buildFakeNTLMChallenge() (string, error) {
-	msg := make([]byte, 48)
-	copy(msg[0:8], []byte("NTLMSSP\x00"))
-	binary.LittleEndian.PutUint32(msg[8:12], 2)
-	binary.LittleEndian.PutUint32(msg[20:24], 0x00000201) // NTLM + Unicode
-	if _, err := rand.Read(msg[24:32]); err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(msg), nil
 }
 
 /*
