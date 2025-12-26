@@ -111,7 +111,7 @@ func (a *StaticAuth) takeNTLMChallenge(r *http.Request) ([]byte, bool) {
 	return challengeCopy, true
 }
 
-func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte, scheme string) (string, error) {
+func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte, scheme, user, password string) (string, error) {
 	msg, err := parseNTLMAuthenticateMessage(data)
 	if err != nil {
 		log.Printf("Invalid NTLM authenticate message from %s: %v", r.RemoteAddr, err)
@@ -122,11 +122,11 @@ func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte, scheme
 		log.Printf("Missing NTLM challenge for %s", ntlmChallengeKey(r))
 		return "", a.ntlmChallengeError(r, scheme)
 	}
-	if normalizeUser(msg.UserName) != staticUser {
+	if normalizeUser(msg.UserName) != user {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
 		return "", a.ntlmChallengeError(r, scheme)
 	}
-	ntlmV2Hash := ntlmV2Hash(staticPassword, msg.UserName, msg.DomainName)
+	ntlmV2Hash := ntlmV2Hash(password, msg.UserName, msg.DomainName)
 	if !verifyNTLMv2Response(challenge, ntlmV2Hash, msg.NtChallengeResponse) {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
 		return "", a.ntlmChallengeError(r, scheme)

@@ -84,7 +84,7 @@ func (a *StaticAuth) Authenticate(
 			case ntlmMessageTypeNegotiate:
 				return "", a.ntlmChallengeError(r, canonicalScheme)
 			case ntlmMessageTypeAuthenticate:
-				user, err := a.verifyNTLMAuthenticate(r, ntlmToken, canonicalScheme)
+				user, err := a.verifyNTLMAuthenticate(r, ntlmToken, canonicalScheme, staticUser, staticPassword)
 				if err != nil {
 					return "", err
 				}
