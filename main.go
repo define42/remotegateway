@@ -431,7 +431,9 @@ func main() {
 		w.Header().Set("Content-Disposition", `attachment; filename="`+rdpFilename+`"`)
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(rdpContent))
+		if _, err := w.Write([]byte(rdpContent)); err != nil {
+			log.Printf("failed to write RDP file response: %v", err)
+		}
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -445,7 +447,9 @@ func main() {
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok\n"))
+		if _, err := w.Write([]byte("ok\n")); err != nil {
+			log.Printf("failed to write health response: %v", err)
+		}
 	})
 
 	//mux.Handle("/rdgateway/", gatewayHandler)

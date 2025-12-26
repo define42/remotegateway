@@ -179,6 +179,56 @@ func TestNTLMChallengeKey(t *testing.T) {
 	}
 }
 
+func TestTakeNTLMChallenge(t *testing.T) {
+	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
+	key := ntlmChallengeKey(req)
+	original := []byte{9, 8, 7, 6, 5, 4, 3, 2}
+	auth := &StaticAuth{
+		challenges: map[string]ntlmChallengeState{
+			key: {
+				challenge: original,
+				issuedAt:  time.Now(),
+			},
+		},
+	}
+
+	challenge, ok := auth.takeNTLMChallenge(req)
+	if !ok {
+		t.Fatalf("expected challenge to be returned")
+	}
+	if !bytes.Equal(challenge, original) {
+		t.Fatalf("expected challenge to match original")
+	}
+	challenge[0] ^= 0xFF
+	if bytes.Equal(challenge, original) {
+		t.Fatalf("expected challenge to be copied")
+	}
+
+	if _, ok := auth.takeNTLMChallenge(req); ok {
+		t.Fatalf("expected challenge to be removed after take")
+	}
+
+	expiredAuth := &StaticAuth{
+		challenges: map[string]ntlmChallengeState{
+			key: {
+				challenge: original,
+				issuedAt:  time.Now().Add(-ntlmChallengeTTL - time.Second),
+			},
+		},
+	}
+	if _, ok := expiredAuth.takeNTLMChallenge(req); ok {
+		t.Fatalf("expected expired challenge to be rejected")
+	}
+	if len(expiredAuth.challenges) != 0 {
+		t.Fatalf("expected expired challenge to be pruned")
+	}
+
+	emptyAuth := &StaticAuth{}
+	if _, ok := emptyAuth.takeNTLMChallenge(req); ok {
+		t.Fatalf("expected missing challenge to be rejected")
+	}
+}
+
 func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}

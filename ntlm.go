@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	//nolint:staticcheck // MD4 is required for NTLM compatibility
 	"golang.org/x/crypto/md4"
 )
 
