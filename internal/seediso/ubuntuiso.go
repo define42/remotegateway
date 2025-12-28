@@ -1,7 +1,6 @@
 package seediso
 
-/*
-func createUbuntuSeedISO() {
+func CreateUbuntuSeedISO(isoPath string) error {
 
 	userData := []byte(`#cloud-config
 users:
@@ -19,7 +18,8 @@ local-hostname: ubuntu
 		MetaData: metaData,
 	}
 
-	if err := iso.Create("seed.iso"); err != nil {
-		log.Fatal(err)
+	if err := iso.Create(isoPath); err != nil {
+		return err
 	}
-}*/
+	return nil
+}
