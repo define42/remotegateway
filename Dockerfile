@@ -1,7 +1,12 @@
+# syntax=docker/dockerfile:1.7
 # ---------- build stage ----------
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
+
+RUN apk add --no-cache \
+    build-base \
+    pkgconf libvirt-dev
 
 # Enable static binary
 ENV CGO_ENABLED=0 \
@@ -11,25 +16,28 @@ ENV CGO_ENABLED=0 \
 
 # Copy module files first (better caching)
 COPY go.mod go.sum  ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source
 COPY *.go ./
+COPY internal internal
 
 # Build
-RUN go build -o registry-proxy
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 go build -o remotegateway
 
 
 # ---------- runtime stage ----------
-FROM scratch
+#FROM scratch
 
-WORKDIR /app
+#WORKDIR /app
 
 # Copy binary
-COPY --from=builder /app/registry-proxy /app/registry-proxy
+#COPY --from=builder /app/remotegateway /app/remotegateway
 
 # TLS certs will be mounted
-EXPOSE 8443
+#EXPOSE 8443
 
 
-ENTRYPOINT ["/app/registry-proxy"]
+ENTRYPOINT ["/app/remotegateway"]

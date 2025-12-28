@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   workstation:
     image:  scottyhardy/docker-remote-desktop:latest
@@ -12,7 +10,10 @@ services:
   gateway:
     build: ./
     restart: always
+    privileged: true
     ports:
       - "8443:8443"
+    volumes:
+      - /var/run/libvirt:/var/run/libvirt
     depends_on:
       - workstation
