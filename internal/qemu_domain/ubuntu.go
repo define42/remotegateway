@@ -44,9 +44,10 @@ func UbuntuDomain(name string) string {
     </disk>
 
     <!-- Network (user-mode NAT, like -netdev user) -->
-    <interface type='user'>
-      <model type='virtio'/>
-    </interface>
+<interface type='network'>
+  <source network='default'/>
+  <model type='virtio'/>
+</interface>
 
     <!-- Graphics -->
     <graphics type='spice' autoport='yes'/>

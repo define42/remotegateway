@@ -28,6 +28,9 @@ func CreateUbuntuSeedISOToPool(
 	userData := []byte(`#cloud-config
 output:
   all: '| tee -a /var/log/cloud-init-output.log'
+keyboard:
+  layout: dk
+  variant: ''
 users:
   - name: ` + username + `
     sudo: ALL=(ALL) NOPASSWD:ALL
