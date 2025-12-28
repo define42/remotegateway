@@ -16,7 +16,7 @@ type vmInfo struct {
 }
 
 func ListVMs() []vmInfo {
-	conn, err := libvirt.NewConnect(libvirtURI())
+	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
 		log.Printf("list vms connect: %v", err)
 		return nil

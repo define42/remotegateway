@@ -7,7 +7,7 @@ import (
 )
 
 func TestStartVM(t *testing.T) {
-	conn, err := libvirt.NewConnect(libvirtURI())
+	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
 		t.Fatalf("Failed to connect to libvirt: %v", err)
 	}

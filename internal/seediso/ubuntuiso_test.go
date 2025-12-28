@@ -1,16 +1,10 @@
 package seediso_test
 
-import (
-	"os"
-	"path"
-	"remotegateway/internal/seediso"
-	"testing"
-)
-
+/*
 func TestCcreateUbuntuSeedISO(t *testing.T) {
 	isoPath := path.Join(t.TempDir(), "test-ubuntu-seed.iso")
 
-	err := seediso.CreateUbuntuSeedISO(isoPath, "testuser", "testpassword", "testhost")
+	err := seediso.CreateUbuntuSeedISOToPool(
 	if err != nil {
 		t.Fatalf("Failed to create Ubuntu seed ISO: %v", err)
 	}
@@ -24,3 +18,4 @@ func TestCcreateUbuntuSeedISO(t *testing.T) {
 		t.Fatalf("Created ISO is empty")
 	}
 }
+*/

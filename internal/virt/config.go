@@ -10,7 +10,7 @@ const (
 	libvirtURIEnv     = "LIBVIRT_URI"
 )
 
-func libvirtURI() string {
+func LibvirtURI() string {
 	if uri := strings.TrimSpace(os.Getenv(libvirtURIEnv)); uri != "" {
 		return uri
 	}
