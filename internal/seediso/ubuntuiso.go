@@ -1,16 +1,25 @@
 package seediso
 
-func CreateUbuntuSeedISO(isoPath string) error {
+import (
+	"github.com/tredoe/osutil/user/crypt/sha512_crypt"
+)
+
+func CreateUbuntuSeedISO(isoPath, username, password, hostname string) error {
+
+	passSha, err := CloudInitPasswordHash(password)
+	if err != nil {
+		return err
+	}
 
 	userData := []byte(`#cloud-config
 users:
-  - name: demo
+  - name: ` + username + `
     sudo: ALL=(ALL) NOPASSWD:ALL
-    passwd: $6$HASH...
+    passwd: ` + passSha + `
 `)
 
 	metaData := []byte(`instance-id: ubuntu-seed
-local-hostname: ubuntu
+local-hostname: ` + hostname + `
 `)
 
 	iso := SeedISO{
@@ -22,4 +31,18 @@ local-hostname: ubuntu
 		return err
 	}
 	return nil
+}
+
+// CloudInitPasswordHash generates a /etc/shadow compatible
+// SHA-512 ($6$) password hash for cloud-init.
+func CloudInitPasswordHash(password string) (string, error) {
+	saltGen := sha512_crypt.GetSalt()
+	salt := saltGen.GenerateWRounds(16, 5000)
+	c := sha512_crypt.New()
+	hash, err := c.Generate([]byte(password), salt)
+	if err != nil {
+		return "", err
+	}
+
+	return hash, nil
 }

@@ -6,7 +6,7 @@ toolchain go1.24.11
 
 require (
 	github.com/bolkedebruin/rdpgw v1.0.4
-	golang.org/x/crypto v0.45.0
+	golang.org/x/crypto v0.46.0
 )
 
 require (
@@ -23,7 +23,8 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.10.0 // indirect
 	github.com/prometheus/procfs v0.1.3 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	github.com/tredoe/osutil v1.5.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	google.golang.org/protobuf v1.23.0 // indirect
 	libvirt.org/go/libvirt v1.11010.0 // indirect
 )

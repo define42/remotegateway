@@ -10,7 +10,7 @@ import (
 func TestCcreateUbuntuSeedISO(t *testing.T) {
 	isoPath := path.Join(t.TempDir(), "test-ubuntu-seed.iso")
 
-	err := seediso.CreateUbuntuSeedISO(isoPath)
+	err := seediso.CreateUbuntuSeedISO(isoPath, "testuser", "testpassword", "testhost")
 	if err != nil {
 		t.Fatalf("Failed to create Ubuntu seed ISO: %v", err)
 	}
