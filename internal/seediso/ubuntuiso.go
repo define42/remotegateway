@@ -26,6 +26,8 @@ func CreateUbuntuSeedISOToPool(
 
 	// 2. Build cloud-init data
 	userData := []byte(`#cloud-config
+output:
+  all: '| tee -a /var/log/cloud-init-output.log'
 users:
   - name: ` + username + `
     sudo: ALL=(ALL) NOPASSWD:ALL
@@ -33,6 +35,17 @@ users:
     lock_passwd: false
     passwd: ` + passSha + `
 ssh_pwauth: true
+package_update: true
+package_upgrade: true
+packages:
+  - ubuntu-desktop
+  - xrdp
+  - xorgxrdp
+  - net-tools
+  - vim
+runcmd:
+  - systemctl enable --now gdm
+  - systemctl enable --now xrdp
 `)
 
 	fmt.Println("userData:", string(userData))
