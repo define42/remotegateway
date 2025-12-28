@@ -28,7 +28,9 @@ jobs:
       - name: Install packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvirt-dev
+          sudo apt-get install -y libvirt-dev   qemu-kvm  libvirt-daemon-system  libvirt-clients  bridge-utils  virtinst
+          sudo systemctl enable --now libvirtd
+          sudo systemctl start libvirtd
 
       # -------------------------------
       # Go setup
