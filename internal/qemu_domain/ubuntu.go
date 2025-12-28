@@ -69,7 +69,7 @@ func UbuntuDomain() string {
 <domain type='kvm'>
   <name>ubuntu-cloudinit-desktop</name>
   <memory unit='MiB'>4096</memory>
-  <currentMemory unit='MiB'>4096</currentMemory>
+  <currentMemory unit='MiB'>%d</currentMemory>
   <vcpu placement='static'>4</vcpu>
 
   <os>
@@ -127,5 +127,5 @@ func UbuntuDomain() string {
       <backend model='random'>/dev/urandom</backend>
     </rng>
   </devices>
-</domain>`)
+</domain>`, 4096)
 }

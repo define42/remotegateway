@@ -1,9 +1,6 @@
 package seediso
 
-import (
-	"log"
-)
-
+/*
 func createUbuntuSeedISO() {
 
 	userData := []byte(`#cloud-config
@@ -25,4 +22,4 @@ local-hostname: ubuntu
 	if err := iso.Create("seed.iso"); err != nil {
 		log.Fatal(err)
 	}
-}
+}*/

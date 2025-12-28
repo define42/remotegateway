@@ -1,11 +1,7 @@
 package virt
 
-import (
-	"libvirt.org/go/libvirt"
-)
-
 // startVM starts a libvirt VM by name if it is not already running
-
+/*
 func StartVM(name string) error {
 	conn, err := libvirt.NewConnect(libvirtURI())
 	if err != nil {
@@ -28,3 +24,4 @@ func StartVM(name string) error {
 	}
 	return dom.Create()
 }
+*/
