@@ -29,6 +29,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libvirt-dev   qemu-kvm  libvirt-daemon-system  libvirt-clients  bridge-utils  virtinst
+          sudo sed -i \
+            -e 's/^#\\?user = .*/user = "root"/' \
+            -e 's/^#\\?group = .*/group = "root"/' \
+            /etc/libvirt/qemu.conf
           sudo systemctl enable --now libvirtd
           sudo systemctl start libvirtd
           sudo chmod 777 /var/run/libvirt/libvirt-sock
@@ -36,6 +40,7 @@ jobs:
             sudo virsh -c qemu:///system pool-define-as default dir --target /var/lib/libvirt/images
           sudo virsh -c qemu:///system pool-start default
           sudo virsh -c qemu:///system pool-autostart default
+          sudo systemctl restart libvirtd
 
       # -------------------------------
       # Go setup
