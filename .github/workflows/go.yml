@@ -29,11 +29,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libvirt-dev   qemu-kvm  libvirt-daemon-system  libvirt-clients  bridge-utils  virtinst
-          sudo sed -i \
-            -e 's/^#\\?user = .*/user = "root"/' \
-            -e 's/^#\\?group = .*/group = "root"/' \
-            -e 's/^#\\?dynamic_ownership = .*/dynamic_ownership = 1/' \
-            /etc/libvirt/qemu.conf
+          sudo bash -c 'cat >>/etc/libvirt/qemu.conf <<EOF
+          user = "root"
+          group = "root"
+          dynamic_ownership = 0
+          security_driver = "none"
+          security_default_confined = 0
+          EOF'
           sudo systemctl enable --now libvirtd
           sudo systemctl start libvirtd
           sudo chmod 777 /var/run/libvirt/libvirt-sock
