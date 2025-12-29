@@ -137,14 +137,21 @@ local-hostname: ` + hostname + `
 	if err != nil {
 		return err
 	}
+	pathXML := ""
+	if permXML != "" {
+		pathXML, err = storageVolPathXML(pool, volumeName)
+		if err != nil {
+			return err
+		}
+	}
 	volXML := fmt.Sprintf(`
 <volume>
   <name>%s</name>
   <capacity unit="bytes">%d</capacity>
   <target>
-    <format type="raw"/>%s
+    <format type="raw"/>%s%s
   </target>
-</volume>`, volumeName, info.Size(), permXML)
+</volume>`, volumeName, info.Size(), pathXML, permXML)
 
 	vol, err := pool.StorageVolCreateXML(volXML, 0)
 	if err != nil {
