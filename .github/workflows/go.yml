@@ -61,6 +61,8 @@ jobs:
         run: make lint
 
       - name: Run tests with coverage
+        env:
+          LIBVIRT_VOLUME_MODE: "0666"
         run: go test ./... -coverprofile=coverage.out
 
       - name: Show coverage in job summary

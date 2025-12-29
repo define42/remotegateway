@@ -92,14 +92,18 @@ func CopyAndResizeVolume(
 	}()
 
 	// Create volume XML
+	permXML, err := storageVolPermissionsXML()
+	if err != nil {
+		return err
+	}
 	volXML := fmt.Sprintf(`
 <volume>
   <name>%s</name>
   <capacity unit="bytes">%d</capacity>
   <target>
-    <format type="qcow2"/>
+    <format type="qcow2"/>%s
   </target>
-</volume>`, volumeName, capacityBytes)
+</volume>`, volumeName, capacityBytes, permXML)
 
 	// Create volume
 	vol, err := pool.StorageVolCreateXML(volXML, 0)

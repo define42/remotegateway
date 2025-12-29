@@ -133,14 +133,18 @@ local-hostname: ` + hostname + `
 	}()
 
 	// 5. Create volume for ISO
+	permXML, err := storageVolPermissionsXML()
+	if err != nil {
+		return err
+	}
 	volXML := fmt.Sprintf(`
 <volume>
   <name>%s</name>
   <capacity unit="bytes">%d</capacity>
   <target>
-    <format type="raw"/>
+    <format type="raw"/>%s
   </target>
-</volume>`, volumeName, info.Size())
+</volume>`, volumeName, info.Size(), permXML)
 
 	vol, err := pool.StorageVolCreateXML(volXML, 0)
 	if err != nil {
