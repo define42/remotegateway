@@ -12,6 +12,7 @@ import (
 const (
 	// LibvirtURI is the URI used to connect to libvirt
 	DEFAULT_VIRT_STORAGE = "default"
+	BASE_IMAGE           = "noble-desktop-cloudimg-amd64.img"
 )
 
 // startVM starts a libvirt VM by name if it is not already running
@@ -209,6 +210,12 @@ func BootNewVM(name, username, password string) error {
 
 	seedIso := vmName + "_seed.iso"
 
+	// check image exists
+	imagePath := BASE_IMAGE
+	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
+		return fmt.Errorf("base image %s does not exist", imagePath)
+	}
+
 	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
 		return fmt.Errorf("Failed to connect to libvirt: %v", err)
@@ -222,7 +229,7 @@ func BootNewVM(name, username, password string) error {
 		return err
 	}
 
-	if err := CopyAndResizeVolume(conn, vmName, "noble-desktop-cloudimg-amd64.img", 40*1024*1024*1024); err != nil {
+	if err := CopyAndResizeVolume(conn, vmName, BASE_IMAGE, 40*1024*1024*1024); err != nil {
 		return err
 	}
 
