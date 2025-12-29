@@ -213,8 +213,11 @@ func BootNewVM(name, username, password string) error {
 	seedIso := vmName + "_seed.iso"
 
 	// check image exists
-	if err := downloadWithProgress(BASE_IMAGE_URL, BASE_IMAGE); err != nil {
-		return err
+	if _, err := os.Stat(BASE_IMAGE); os.IsNotExist(err) {
+		log.Printf("Base image %s not found, downloading...", BASE_IMAGE)
+		if err := downloadWithProgress(BASE_IMAGE_URL, BASE_IMAGE); err != nil {
+			return err
+		}
 	}
 
 	conn, err := libvirt.NewConnect(LibvirtURI())
@@ -224,22 +227,22 @@ func BootNewVM(name, username, password string) error {
 	defer conn.Close()
 
 	if err := DestroyExistingDomain(conn, vmName); err != nil {
-		return err
+		return fmt.Errorf("Failed to destroy existing domain: %v", err)
 	}
 	if err := RemoveVolumes(conn, vmName, seedIso); err != nil {
-		return err
+		return fmt.Errorf("Failed to remove existing volumes: %v", err)
 	}
 
 	if err := CopyAndResizeVolume(conn, vmName, BASE_IMAGE, 40*1024*1024*1024); err != nil {
-		return err
+		return fmt.Errorf("Failed to copy and resize base image: %v", err)
 	}
 
 	if err := CreateUbuntuSeedISOToPool(conn, seedIso, username, password, vmName); err != nil {
-		return err
+		return fmt.Errorf("Failed to create seed ISO: %v", err)
 	}
 
 	if err := StartVM(vmName, seedIso); err != nil {
-		return err
+		return fmt.Errorf("Failed to start VM: %v", err)
 	}
 
 	return nil
