@@ -13,6 +13,8 @@ const (
 	// LibvirtURI is the URI used to connect to libvirt
 	DEFAULT_VIRT_STORAGE = "default"
 	BASE_IMAGE           = "noble-desktop-cloudimg-amd64.img"
+
+	BASE_IMAGE_URL = "https://github.com/define42/ubuntu-desktop-cloud-image/releases/download/v0.0.11/noble-desktop-cloudimg-amd64.img"
 )
 
 // startVM starts a libvirt VM by name if it is not already running
@@ -211,9 +213,8 @@ func BootNewVM(name, username, password string) error {
 	seedIso := vmName + "_seed.iso"
 
 	// check image exists
-	imagePath := BASE_IMAGE
-	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-		return fmt.Errorf("base image %s does not exist", imagePath)
+	if err := downloadWithProgress(BASE_IMAGE_URL, BASE_IMAGE); err != nil {
+		return err
 	}
 
 	conn, err := libvirt.NewConnect(LibvirtURI())
