@@ -41,14 +41,58 @@ ssh_pwauth: true
 package_update: true
 package_upgrade: true
 packages:
-  - ubuntu-desktop
+  - gnome-session
+  - gnome-shell
+  - gnome-terminal
+  - gdm3
   - xrdp
   - xorgxrdp
-  - net-tools
-  - vim
+  - dbus-x11
+
+write_files:
+  # Disable Wayland (XRDP requires Xorg)
+  - path: /etc/gdm3/custom.conf
+    permissions: '0644'
+    content: |
+      [daemon]
+      WaylandEnable=false
+      DefaultSession=gnome-xorg.desktop
+
+  # Force GNOME to behave well under XRDP
+  - path: /etc/profile.d/gnome-xrdp.sh
+    permissions: '0644'
+    content: |
+      export XDG_SESSION_TYPE=x11
+      export GSK_RENDERER=cairo
+      export MUTTER_DEBUG_FORCE_KMS_MODE=simple
+
+  # Disable GNOME portal backend globally (avoid timeouts)
+  - path: /etc/systemd/user/xdg-desktop-portal-gnome.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Disabled for XRDP
+
+  # Disable AppArmor at kernel level
+  - path: /etc/default/grub.d/99-disable-apparmor.cfg
+    permissions: '0644'
+    content: |
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT apparmor=0"
+
 runcmd:
-  - systemctl enable --now gdm
-  - systemctl enable --now xrdp
+  # Enable XRDP
+  - systemctl enable xrdp
+  - systemctl restart xrdp
+
+  # Disable AppArmor service immediately (kernel param applies after reboot)
+  - systemctl disable --now apparmor || true
+
+  # Mask GNOME portal backend globally
+  - systemctl --global mask xdg-desktop-portal-gnome.service
+
+  # Update GRUB and reboot to apply kernel params
+  - update-grub
+  - reboot
 `)
 
 	fmt.Println("userData:", string(userData))

@@ -56,7 +56,7 @@ func TestStartVM(t *testing.T) {
 		log.Printf("Deleted volume %s", volumeName)
 	}
 
-	if err := virt.CopyAndResizeVolume(conn, "default", volumeName, "noble-server-cloudimg-amd64.img", 40*1024*1024*1024); err != nil {
+	if err := virt.CopyAndResizeVolume(conn, "default", volumeName, "noble-desktop-cloudimg-amd64.img", 40*1024*1024*1024); err != nil {
 		t.Fatalf("Failed to copy and resize volume: %v", err)
 	}
 
