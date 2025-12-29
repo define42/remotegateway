@@ -1,4 +1,4 @@
-package seediso
+package virt
 
 import (
 	"fmt"
@@ -11,7 +11,6 @@ import (
 
 func CreateUbuntuSeedISOToPool(
 	conn *libvirt.Connect,
-	poolName string,
 	volumeName string,
 	username string,
 	password string,
@@ -123,7 +122,7 @@ local-hostname: ` + hostname + `
 	}
 
 	// 4. Lookup storage pool
-	pool, err := conn.LookupStoragePoolByName(poolName)
+	pool, err := conn.LookupStoragePoolByName(DEFAULT_VIRT_STORAGE)
 	if err != nil {
 		return err
 	}

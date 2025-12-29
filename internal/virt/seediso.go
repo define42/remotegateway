@@ -1,4 +1,4 @@
-package seediso
+package virt
 
 import (
 	"bytes"

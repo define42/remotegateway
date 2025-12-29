@@ -5,21 +5,25 @@ import (
 	"io"
 	"log"
 	"os"
-	"remotegateway/internal/qemu_domain"
 
 	"libvirt.org/go/libvirt"
 )
 
+const (
+	// LibvirtURI is the URI used to connect to libvirt
+	DEFAULT_VIRT_STORAGE = "default"
+)
+
 // startVM starts a libvirt VM by name if it is not already running
 
-func StartVM(name string) error {
+func StartVM(name, seedIso string) error {
 	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	dom, err := conn.DomainDefineXML(qemu_domain.UbuntuDomain(name))
+	dom, err := conn.DomainDefineXML(UbuntuDomain(name, seedIso))
 	if err != nil {
 		fmt.Println("whaat", err)
 		return err
@@ -37,16 +41,44 @@ func StartVM(name string) error {
 
 }
 
+func RemoveVolumes(conn *libvirt.Connect, volumeNames ...string) error {
+	pool, err := conn.LookupStoragePoolByName(DEFAULT_VIRT_STORAGE)
+	if err != nil {
+		return fmt.Errorf("lookup storage pool: %w", err)
+	}
+	defer func() {
+		if err := pool.Free(); err != nil {
+			fmt.Println("pool free error:", err)
+		}
+	}()
+
+	for _, volumeName := range volumeNames {
+		vol, err := pool.LookupStorageVolByName(volumeName)
+		if err != nil {
+			continue
+		}
+		defer func() {
+			_ = vol.Free()
+		}()
+
+		if err := vol.Delete(0); err != nil {
+			return fmt.Errorf("delete volume %s: %w", volumeName, err)
+		}
+		log.Printf("Deleted volume %s", volumeName)
+	}
+
+	return nil
+}
+
 func CopyAndResizeVolume(
 	conn *libvirt.Connect,
-	poolName string,
 	volumeName string,
 	sourceImagePath string,
 	capacityBytes uint64,
 ) error {
 
 	// Lookup storage pool
-	pool, err := conn.LookupStoragePoolByName(poolName)
+	pool, err := conn.LookupStoragePoolByName(DEFAULT_VIRT_STORAGE)
 	if err != nil {
 		return fmt.Errorf("lookup pool: %w", err)
 	}
@@ -168,5 +200,39 @@ func DestroyExistingDomain(conn *libvirt.Connect, vmName string) error {
 		return err
 	}
 	log.Printf("Undefined domain %s", vmName)
+	return nil
+}
+
+func BootNewVM(name, username, password string) error {
+
+	vmName := username + "_" + name
+
+	seedIso := vmName + "_seed.iso"
+
+	conn, err := libvirt.NewConnect(LibvirtURI())
+	if err != nil {
+		return fmt.Errorf("Failed to connect to libvirt: %v", err)
+	}
+	defer conn.Close()
+
+	if err := DestroyExistingDomain(conn, vmName); err != nil {
+		return err
+	}
+	if err := RemoveVolumes(conn, vmName, seedIso); err != nil {
+		return err
+	}
+
+	if err := CopyAndResizeVolume(conn, vmName, "noble-desktop-cloudimg-amd64.img", 40*1024*1024*1024); err != nil {
+		return err
+	}
+
+	if err := CreateUbuntuSeedISOToPool(conn, seedIso, username, password, vmName); err != nil {
+		return err
+	}
+
+	if err := StartVM(vmName, seedIso); err != nil {
+		return err
+	}
+
 	return nil
 }

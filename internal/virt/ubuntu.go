@@ -1,10 +1,10 @@
-package qemu_domain
+package virt
 
 import (
 	"fmt"
 )
 
-func UbuntuDomain(name string) string {
+func UbuntuDomain(name, seedIso string) string {
 
 	return fmt.Sprintf(`<domain type='kvm'>
   <name>%s</name>
@@ -38,7 +38,7 @@ func UbuntuDomain(name string) string {
     <!-- cloud-init seed ISO -->
     <disk type='volume' device='disk'>
       <driver name='qemu' type='raw'/>
-      <source pool='default' volume='seed.iso'/>
+      <source pool='default' volume='%s'/>
       <target dev='vdb' bus='virtio'/>
       <readonly/>
     </disk>
@@ -68,5 +68,5 @@ func UbuntuDomain(name string) string {
       <backend model='random'>/dev/urandom</backend>
     </rng>
   </devices>
-</domain>`, name, 4096, name)
+</domain>`, name, 4096, name, seedIso)
 }
