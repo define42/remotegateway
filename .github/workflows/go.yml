@@ -32,6 +32,10 @@ jobs:
           sudo systemctl enable --now libvirtd
           sudo systemctl start libvirtd
           sudo chmod 777 /var/run/libvirt/libvirt-sock
+          sudo virsh -c qemu:///system pool-info default || \
+            sudo virsh -c qemu:///system pool-define-as default dir --target /var/lib/libvirt/images
+          sudo virsh -c qemu:///system pool-start default
+          sudo virsh -c qemu:///system pool-autostart default
 
       # -------------------------------
       # Go setup
