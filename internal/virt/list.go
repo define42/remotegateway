@@ -3,6 +3,7 @@ package virt
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"libvirt.org/go/libvirt"
 )
@@ -15,18 +16,18 @@ type vmInfo struct {
 	VolumeGB  int
 }
 
-func ListVMs() []vmInfo {
+func ListVMs(prefix string) ([]vmInfo, error) {
 	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
 		log.Printf("list vms connect: %v", err)
-		return nil
+		return nil, err
 	}
 	defer conn.Close()
 
 	doms, err := conn.ListAllDomains(0)
 	if err != nil {
 		log.Printf("list domains: %v", err)
-		return nil
+		return nil, err
 	}
 	defer func() {
 		for _, d := range doms {
@@ -41,6 +42,10 @@ func ListVMs() []vmInfo {
 			log.Printf("domain name: %v", err)
 			continue
 		}
+		if prefix != "" && !strings.HasPrefix(name, prefix) {
+			continue
+		}
+
 		state, _, err := d.GetState()
 		if err != nil {
 			log.Printf("domain state %s: %v", name, err)
@@ -50,7 +55,7 @@ func ListVMs() []vmInfo {
 		volGB := domainDiskGB(d)
 		result = append(result, vmInfo{Name: name, State: formatState(state), MemoryMiB: mem, VCPU: vcpu, VolumeGB: volGB})
 	}
-	return result
+	return result, nil
 }
 
 func domainResources(d libvirt.Domain) (int, int) {

@@ -10,14 +10,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"log"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"remotegateway/internal/virt"
 	"strings"
 	"time"
 
@@ -355,7 +353,7 @@ func getRemoteGatewayRotuer() http.Handler {
 
 func main() {
 
-	fmt.Println(virt.ListVMs())
+	//	fmt.Println(virt.ListVMs())
 
 	mux := getRemoteGatewayRotuer()
 

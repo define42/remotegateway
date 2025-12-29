@@ -5,13 +5,27 @@ import (
 	"testing"
 )
 
+const (
+	testVMName   = "test-vm"
+	testUsername = "testuser"
+	testPassword = "testpassword"
+)
+
 func TestStartVM(t *testing.T) {
 
-	vmName := "test-vm"
-	username := "testuser"
-	password := "testpassword"
-
-	if err := virt.BootNewVM(vmName, username, password); err != nil {
+	if err := virt.BootNewVM(testVMName, testUsername, testPassword); err != nil {
 		t.Fatalf("Failed to boot new VM: %v", err)
 	}
+
+	vms, err := virt.ListVMs(testUsername)
+	if err != nil {
+		t.Fatalf("Failed to list VMs: %v", err)
+	}
+
+	if len(vms) != 1 {
+		t.Fatalf("Expected 1 VM, got %d", len(vms))
+	}
+
+	t.Logf("VMs: %+v", vms)
+
 }
