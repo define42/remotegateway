@@ -32,6 +32,7 @@ jobs:
           sudo sed -i \
             -e 's/^#\\?user = .*/user = "root"/' \
             -e 's/^#\\?group = .*/group = "root"/' \
+            -e 's/^#\\?dynamic_ownership = .*/dynamic_ownership = 1/' \
             /etc/libvirt/qemu.conf
           sudo systemctl enable --now libvirtd
           sudo systemctl start libvirtd
@@ -40,7 +41,9 @@ jobs:
             sudo virsh -c qemu:///system pool-define-as default dir --target /var/lib/libvirt/images
           sudo virsh -c qemu:///system pool-start default
           sudo virsh -c qemu:///system pool-autostart default
-          sudo systemctl restart libvirtd
+          sudo systemctl restart libvirtd || true
+          sudo systemctl restart virtqemud || true
+          sudo systemctl restart virtstoraged || true
 
       # -------------------------------
       # Go setup
