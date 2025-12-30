@@ -65,13 +65,13 @@ func destroySession(ctx context.Context) error {
 
 type sessionContextKey struct{}
 
-func sessionMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
+func sessionMiddleware() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		req, _ := humachi.Unwrap(ctx)
+		req, w := humachi.Unwrap(ctx)
 
 		sess, ok := getSession(req)
 		if !ok || sess.User == nil {
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+			http.Redirect(w, req, "/login", http.StatusSeeOther)
 			return
 		}
 

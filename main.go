@@ -27,6 +27,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	"libvirt.org/go/libvirt"
 )
 
 /*
@@ -333,7 +334,7 @@ func getRemoteGatewayRotuer() http.Handler {
 
 func registerAPI(api huma.API) {
 	group := huma.NewGroup(api, "/api")
-	group.UseMiddleware(sessionMiddleware(api))
+	group.UseMiddleware(sessionMiddleware())
 	huma.Get(group, "/rdpgw.rdp", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
@@ -361,12 +362,123 @@ func registerAPI(api huma.API) {
 				req, w := humachi.Unwrap(ctx)
 				gatewayHost := gatewayHostFromRequest(req)
 				targetHost := rdpTargetFromRequest(req)
-				renderDashboardPage(w, gatewayHost, targetHost)
+				actionMessage := ""
+				if req.URL.Query().Get("removed") != "" {
+					actionMessage = "VM removed."
+				} else if req.URL.Query().Get("created") != "" {
+					actionMessage = "VM creation started."
+				}
+				renderDashboardPage(w, gatewayHost, targetHost, actionMessage, "")
 			},
 		}, nil
 	}, func(op *huma.Operation) {
 		op.Hidden = true
 	})
+
+	huma.Post(group, "/dashboard", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+				gatewayHost := gatewayHostFromRequest(req)
+				targetHost := rdpTargetFromRequest(req)
+
+				if err := req.ParseForm(); err != nil {
+					log.Printf("dashboard form parse failed: %v", err)
+					renderDashboardPage(w, gatewayHost, targetHost, "", "Invalid form submission.")
+					return
+				}
+
+				name, err := validateVMName(req.FormValue("vm_name"))
+				if err != nil {
+					renderDashboardPage(w, gatewayHost, targetHost, "", err.Error())
+					return
+				}
+
+				if err := virt.BootNewVM(name, staticUser, staticPassword); err != nil {
+					log.Printf("boot new vm %q failed: %v", name, err)
+					renderDashboardPage(w, gatewayHost, targetHost, "", "Failed to create VM.")
+					return
+				}
+
+				http.Redirect(w, req, "/api/dashboard?created=1", http.StatusSeeOther)
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+
+	huma.Post(group, "/dashboard/remove", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+				gatewayHost := gatewayHostFromRequest(req)
+				targetHost := rdpTargetFromRequest(req)
+
+				if err := req.ParseForm(); err != nil {
+					log.Printf("dashboard remove form parse failed: %v", err)
+					renderDashboardPage(w, gatewayHost, targetHost, "", "Invalid form submission.")
+					return
+				}
+
+				name := strings.TrimSpace(req.FormValue("vm_name"))
+				if name == "" {
+					renderDashboardPage(w, gatewayHost, targetHost, "", "VM name is required.")
+					return
+				}
+				if len(name) > 128 {
+					renderDashboardPage(w, gatewayHost, targetHost, "", "VM name is too long.")
+					return
+				}
+
+				if err := removeVM(name); err != nil {
+					log.Printf("remove vm %q failed: %v", name, err)
+					renderDashboardPage(w, gatewayHost, targetHost, "", "Failed to remove VM.")
+					return
+				}
+
+				http.Redirect(w, req, "/api/dashboard?removed=1", http.StatusSeeOther)
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+}
+
+func validateVMName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("VM name is required.")
+	}
+	if len(name) > 64 {
+		return "", fmt.Errorf("VM name is too long.")
+	}
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '-' || r == '_' {
+			continue
+		}
+		return "", fmt.Errorf("VM name may only use letters, numbers, '-' or '_'.")
+	}
+	return name, nil
+}
+
+func removeVM(name string) error {
+	conn, err := libvirt.NewConnect(virt.LibvirtURI())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if err := virt.DestroyExistingDomain(conn, name); err != nil {
+		return err
+	}
+	seedIso := name + "_seed.iso"
+	if err := virt.RemoveVolumes(conn, name, seedIso); err != nil {
+		return err
+	}
+	return nil
 }
 
 func main() {

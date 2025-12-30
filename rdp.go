@@ -96,6 +96,54 @@ const indexHTML = `<!doctype html>
         color: var(--muted);
         font-size: 14px;
       }
+      .vm-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-end;
+        margin-bottom: 12px;
+      }
+      .vm-form .field {
+        flex: 1 1 240px;
+        min-width: 220px;
+      }
+      .vm-form label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .vm-form input {
+        width: 100%;
+        box-sizing: border-box;
+        background: #0b1224;
+        border: 1px solid var(--line);
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 14px;
+      }
+      .vm-form button {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-weight: 600;
+        background: var(--accent);
+        color: #062238;
+        cursor: pointer;
+      }
+      .vm-success {
+        margin: 12px 0 0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(56,189,248,0.4);
+        background: rgba(56,189,248,0.12);
+        color: #bae6fd;
+        font-weight: 600;
+        font-size: 13px;
+      }
       .vm-table-wrap {
         margin-top: 12px;
         border: 1px solid var(--line);
@@ -147,6 +195,28 @@ const indexHTML = `<!doctype html>
       .vm-download:hover {
         filter: brightness(1.05);
       }
+      .vm-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .vm-remove-form {
+        margin: 0;
+      }
+      .vm-remove {
+        border: 1px solid rgba(248,113,113,0.6);
+        background: transparent;
+        color: #fecaca;
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .vm-remove:hover {
+        background: rgba(248,113,113,0.12);
+      }
       .vm-error {
         margin: 12px 0 0;
         padding: 10px 12px;
@@ -161,6 +231,9 @@ const indexHTML = `<!doctype html>
         margin: 12px 0 0;
         color: var(--muted);
       }
+      .vm-disabled {
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
@@ -171,6 +244,18 @@ const indexHTML = `<!doctype html>
           <a class="logout-button" href="/logout">Logout</a>
         </div>
         <p class="vm-subtitle">Live inventory from libvirt.</p>
+        <form class="vm-form" method="post" action="/api/dashboard">
+          <div class="field">
+            <label for="vm-name">New VM Name</label>
+            <input id="vm-name" name="vm_name" autocomplete="off" pattern="[A-Za-z0-9_-]+" maxlength="64" title="Letters, numbers, '-' or '_' only" required>
+          </div>
+          <button type="submit">Create VM</button>
+        </form>
+        {{if .ActionError}}
+          <p class="vm-error">{{.ActionError}}</p>
+        {{else if .ActionMessage}}
+          <p class="vm-success">{{.ActionMessage}}</p>
+        {{end}}
         {{if .VMError}}
           <p class="vm-error">{{.VMError}}</p>
         {{else if .VMs}}
@@ -184,7 +269,7 @@ const indexHTML = `<!doctype html>
                   <th>Memory</th>
                   <th>vCPU</th>
                   <th>Disk</th>
-                  <th>RDP</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,11 +282,17 @@ const indexHTML = `<!doctype html>
                   <td>{{if .VCPU}}{{.VCPU}}{{else}}n/a{{end}}</td>
                   <td>{{if .VolumeGB}}{{.VolumeGB}} GB{{else}}n/a{{end}}</td>
                   <td>
-                    {{if .RDPHost}}
-                      <a class="vm-download" href="/api/{{$.Filename}}?target={{.RDPHost | urlquery}}">Download</a>
-                    {{else}}
-                      n/a
-                    {{end}}
+                    <div class="vm-actions">
+                      {{if .RDPHost}}
+                        <a class="vm-download" href="/api/{{$.Filename}}?target={{.RDPHost | urlquery}}">Download</a>
+                      {{else}}
+                        <span class="vm-disabled">n/a</span>
+                      {{end}}
+                      <form class="vm-remove-form" method="post" action="/api/dashboard/remove">
+                        <input type="hidden" name="vm_name" value="{{.Name}}">
+                        <button class="vm-remove" type="submit">Remove</button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
                 {{end}}
@@ -229,7 +320,7 @@ type indexVM struct {
 	VolumeGB  int
 }
 
-func renderDashboardPage(w http.ResponseWriter, gatewayHost, targetHost string) {
+func renderDashboardPage(w http.ResponseWriter, gatewayHost, targetHost, actionMessage, actionError string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	vmList, err := virt.ListVMs("")
 	var vmRows []indexVM
@@ -258,17 +349,21 @@ func renderDashboardPage(w http.ResponseWriter, gatewayHost, targetHost string) 
 		}
 	}
 	data := struct {
-		Gateway  string
-		Target   string
-		Filename string
-		VMs      []indexVM
-		VMError  string
+		Gateway       string
+		Target        string
+		Filename      string
+		VMs           []indexVM
+		VMError       string
+		ActionMessage string
+		ActionError   string
 	}{
-		Gateway:  gatewayHost,
-		Target:   targetHost,
-		Filename: rdpFilename,
-		VMs:      vmRows,
-		VMError:  vmError,
+		Gateway:       gatewayHost,
+		Target:        targetHost,
+		Filename:      rdpFilename,
+		VMs:           vmRows,
+		VMError:       vmError,
+		ActionMessage: actionMessage,
+		ActionError:   actionError,
 	}
 	if err := dashboardTemplate.Execute(w, data); err != nil {
 		http.Error(w, "failed to render page", http.StatusInternalServerError)
