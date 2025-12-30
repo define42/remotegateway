@@ -166,44 +166,6 @@ func logRequests(next http.Handler) http.Handler {
 	})
 }
 
-func verifyTunnelAuth(ctx context.Context, client string) (bool, error) {
-	user, ok := authUserFromContext(ctx)
-	if !ok {
-		log.Printf("missing auth user for tunnel auth")
-		return false, nil
-	}
-
-	if client == "" {
-		log.Printf("empty client name in tunnel auth; allowing for user=%s", user)
-		return true, nil
-	}
-
-	if !strings.EqualFold(normalizeUser(client), user) {
-		return false, nil
-	}
-	return true, nil
-}
-
-/*
-func verifyServer(ctx context.Context, host string) (bool, error) {
-	user, ok := authUserFromContext(ctx)
-	if !ok {
-		log.Printf("missing auth user for server policy")
-		return false, nil
-	}
-	if host == "" || user == "" {
-		log.Printf("empty host or user in server policy: host=%q user=%q", host, user)
-		return false, fmt.Errorf("empty host or user")
-	}
-
-	if strings.HasPrefix(host, user) {
-		log.Printf("allowing server for user=%s host=%s", user, host)
-		return true, nil
-	}
-	log.Printf("denying server for user=%s host=%s", user, host)
-	return false, fmt.Errorf("denying server for user=%s host=%s", user, host)
-}*/
-
 func converToInternServer(ctx context.Context, host string) (string, error) {
 
 	user, ok := authUserFromContext(ctx)
@@ -309,7 +271,6 @@ func getRemoteGatewayRotuer() http.Handler {
 			TokenAuth:                   false,
 			SmartCardAuth:               false,
 			RedirectFlags:               protocol.RedirectFlags{EnableAll: true},
-			VerifyTunnelAuthFunc:        verifyTunnelAuth,
 			ConvertToInternalServerFunc: converToInternServer,
 		},
 	}
