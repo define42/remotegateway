@@ -23,6 +23,10 @@ import (
 	"remotegateway/internal/rdpgw/common"
 	"remotegateway/internal/rdpgw/protocol"
 	"remotegateway/internal/virt"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+	"github.com/go-chi/chi/v5"
 )
 
 /*
@@ -63,6 +67,8 @@ func authUserFromContext(ctx context.Context) (string, bool) {
 
 func basicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		fmt.Println("Basic auth middleware called")
 		user, err := authenticator.Authenticate(r.Context(), r)
 		if err != nil {
 			var challenge authChallenge
@@ -266,8 +272,7 @@ func ensureTLSCert(certPath, keyPath string) error {
    ---------------------------
 */
 
-func getRemoteGatewayRotuer() http.Handler {
-
+func gatewayRouter() http.Handler {
 	gw := protocol.Gateway{
 		ServerConf: &protocol.ServerConf{
 			IdleTimeout:                 0,
@@ -281,45 +286,87 @@ func getRemoteGatewayRotuer() http.Handler {
 	var gatewayHandler http.Handler = http.HandlerFunc(gw.HandleGatewayProtocol)
 	gatewayHandler = basicAuthMiddleware(&StaticAuth{}, gatewayHandler)
 	gatewayHandler = common.EnrichContext(gatewayHandler)
+	return gatewayHandler
+}
 
-	mux := http.NewServeMux()
+func getRemoteGatewayRotuer() http.Handler {
 
-	mux.HandleFunc("/rdpgw.rdp", func(w http.ResponseWriter, r *http.Request) {
-		gatewayHost := gatewayHostFromRequest(r)
-		targetHost := rdpTargetFromRequest(r)
-		rdpContent := rdpFileContent(gatewayHost, targetHost)
+	router := chi.NewRouter()
+	router.Use(sessionManager.LoadAndSave)
 
-		w.Header().Set("Content-Type", "application/x-rdp")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+rdpFilename+`"`)
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(rdpContent)); err != nil {
-			log.Printf("failed to write RDP file response: %v", err)
-		}
-	})
+	router.Post("/login", handleLoginPost)
+	router.Get("/login", handleLoginGet)
+	router.HandleFunc("/logout", handleLogout)
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		gatewayHost := gatewayHostFromRequest(r)
-		renderIndexPage(w, gatewayHost, defaultRDPAddress)
-	})
-
-	mux.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
+	router.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("ok\n")); err != nil {
 			log.Printf("failed to write health response: %v", err)
 		}
 	})
 
+	apiCfg := huma.DefaultConfig("ContainerVault", "1.0.0")
+	apiCfg.OpenAPIPath = ""
+	apiCfg.DocsPath = ""
+	apiCfg.SchemasPath = ""
+	api := humachi.New(router, apiCfg)
+	registerAPI(api)
+
 	//mux.Handle("/rdgateway/", gatewayHandler)
+	gatewayHandler := gatewayRouter()
 
-	mux.Handle("/remoteDesktopGateway/", gatewayHandler)
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	})
 	//mux.Handle("/rpc/rpcproxy.dll", gatewayHandler)
-	return mux
+	return logRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if path == "/remoteDesktopGateway" || strings.HasPrefix(path, "/remoteDesktopGateway/") {
+			// Bypass chi so custom RDG_* methods reach the gateway handler.
+			gatewayHandler.ServeHTTP(w, r)
+			return
+		}
+		router.ServeHTTP(w, r)
+	}))
 
+}
+
+func registerAPI(api huma.API) {
+	group := huma.NewGroup(api, "/api")
+	group.UseMiddleware(sessionMiddleware(api))
+	huma.Get(group, "/rdpgw.rdp", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+				gatewayHost := gatewayHostFromRequest(req)
+				targetHost := rdpTargetFromRequest(req)
+				rdpContent := rdpFileContent(gatewayHost, targetHost)
+
+				w.Header().Set("Content-Type", "application/x-rdp")
+				w.Header().Set("Content-Disposition", `attachment; filename="`+rdpFilename+`"`)
+				w.Header().Set("Cache-Control", "no-store")
+				w.WriteHeader(http.StatusOK)
+				if _, err := w.Write([]byte(rdpContent)); err != nil {
+					log.Printf("failed to write RDP file response: %v", err)
+				}
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+
+	huma.Get(group, "/dashboard", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+				gatewayHost := gatewayHostFromRequest(req)
+				targetHost := rdpTargetFromRequest(req)
+				renderIndexPage(w, gatewayHost, targetHost)
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
 }
 
 func main() {
@@ -330,7 +377,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:      ":8443",
-		Handler:   logRequests(mux),
+		Handler:   mux,
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 
 		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),

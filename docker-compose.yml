@@ -11,6 +11,19 @@ services:
       virbr0-net:
         ipv4_address: 192.168.122.254
       app-net:           # host-access + port publishing
+
+  ldap:
+    image: glauth/glauth
+    container_name: ldap
+    restart: always
+    ports:
+      - "389:389"
+    volumes:
+      - ./testldap/default-config.cfg:/app/config/config.cfg
+      - ./testldap/key.pem:/app/config/key.pem
+      - ./testldap/cert.pem:/app/config/cert.pem
+    networks:
+      app-net:
 networks:
   virbr0-net:
     driver: macvlan
@@ -22,4 +35,3 @@ networks:
           gateway: 192.168.122.1
   app-net:
     driver: bridge
-

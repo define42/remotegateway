@@ -278,7 +278,7 @@ const indexHTML = `<!doctype html>
                   <td>{{if .VolumeGB}}{{.VolumeGB}} GB{{else}}n/a{{end}}</td>
                   <td>
                     {{if .RDPHost}}
-                      <a class="vm-download" href="/{{$.Filename}}?target={{.RDPHost | urlquery}}">Download</a>
+                      <a class="vm-download" href="/api/{{$.Filename}}?target={{.RDPHost | urlquery}}">Download</a>
                     {{else}}
                       n/a
                     {{end}}
