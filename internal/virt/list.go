@@ -169,3 +169,25 @@ func formatState(state libvirt.DomainState) string {
 		return fmt.Sprintf("unknown (%d)", state)
 	}
 }
+
+func GetIpOfVm(vmName string) (string, error) {
+	conn, err := libvirt.NewConnect(LibvirtURI())
+	if err != nil {
+		log.Printf("list vms connect: %v", err)
+		return "", err
+	}
+	defer conn.Close()
+
+	dom, err := conn.LookupDomainByName(vmName)
+	if err != nil {
+		log.Printf("lookup domain %s: %v", vmName, err)
+		return "", err
+	}
+	defer dom.Free()
+
+	ips := domainIPs(*dom, vmName)
+	if len(ips) == 0 {
+		return "", fmt.Errorf("no IP addresses found for VM %s", vmName)
+	}
+	return ips[0], nil
+}

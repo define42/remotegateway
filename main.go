@@ -21,6 +21,7 @@ import (
 
 	"remotegateway/internal/rdpgw/common"
 	"remotegateway/internal/rdpgw/protocol"
+	"remotegateway/internal/virt"
 )
 
 /*
@@ -203,7 +204,7 @@ func verifyServer(ctx context.Context, host string) (bool, error) {
 }
 
 func converToInternServer(ctx context.Context, host string) (string, error) {
-	return "192.168.122.200", nil
+	return virt.GetIpOfVm(host)
 }
 
 /*

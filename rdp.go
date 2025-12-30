@@ -320,11 +320,12 @@ func renderIndexPage(w http.ResponseWriter, gatewayHost, targetHost string) {
 	} else {
 		vmRows = make([]indexVM, 0, len(vmList))
 		for _, vm := range vmList {
-			targetHost := vm.PrimaryIP
-			if targetHost == "" {
-				targetHost = vm.Name
-			}
-			rdpHost := rdpTargetHost(targetHost)
+			/*
+				targetHost := vm.PrimaryIP
+				if targetHost == "" {
+					targetHost = vm.Name
+				}*/
+			rdpHost := rdpTargetHost(vm.Name)
 			vmRows = append(vmRows, indexVM{
 				Name:      vm.Name,
 				IP:        vm.IP,

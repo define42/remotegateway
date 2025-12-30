@@ -73,7 +73,9 @@ func (g *Gateway) HandleGatewayProtocol(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := context.WithValue(r.Context(), "SessionInfo", s)
 
-	if r.Method == MethodRDGOUT {
+	switch r.Method {
+
+	case MethodRDGOUT:
 		if r.Header.Get("Connection") != "upgrade" && r.Header.Get("Upgrade") != "websocket" {
 			g.handleLegacyProtocol(w, r.WithContext(ctx), s)
 			return
@@ -92,7 +94,7 @@ func (g *Gateway) HandleGatewayProtocol(w http.ResponseWriter, r *http.Request) 
 		}
 
 		g.handleWebsocketProtocol(ctx, conn, s)
-	} else if r.Method == MethodRDGIN {
+	case MethodRDGIN:
 		g.handleLegacyProtocol(w, r.WithContext(ctx), s)
 	}
 }
@@ -173,7 +175,9 @@ func (g *Gateway) handleWebsocketProtocol(ctx context.Context, c *websocket.Conn
 func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s *SessionInfo) {
 	log.Printf("Session %s, %t, %t", s.ConnId, s.TransportOut != nil, s.TransportIn != nil)
 
-	if r.Method == MethodRDGOUT {
+	switch r.Method {
+
+	case MethodRDGOUT:
 		out, err := transport.NewLegacy(w)
 		if err != nil {
 			log.Printf("cannot hijack connection to support RDG OUT data channel: %s", err)
@@ -185,7 +189,7 @@ func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s
 		out.SendAccept(true)
 
 		c.Set(s.ConnId, s, cache.DefaultExpiration)
-	} else if r.Method == MethodRDGIN {
+	case MethodRDGIN:
 		legacyConnections.Inc()
 		defer legacyConnections.Dec()
 
