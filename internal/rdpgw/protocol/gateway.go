@@ -166,7 +166,9 @@ func (g *Gateway) handleWebsocketProtocol(ctx context.Context, c *websocket.Conn
 	s.TransportOut = inout
 	s.TransportIn = inout
 	handler := NewServer(s, g.ServerConf)
-	handler.Process(ctx)
+	if err := handler.Process(ctx); err != nil {
+		log.Printf("Error processing handler: %s", err)
+	}
 }
 
 // The legacy protocol (no websockets) uses an RDG_IN_DATA for client -> server
@@ -212,7 +214,9 @@ func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s
 
 			log.Printf("Legacy handshakeRequest done for client %s", common.GetClientIp(r.Context()))
 			handler := NewServer(s, g.ServerConf)
-			handler.Process(r.Context())
+			if err := handler.Process(r.Context()); err != nil {
+				log.Printf("Error processing handler: %s", err)
+			}
 		}
 	}
 }

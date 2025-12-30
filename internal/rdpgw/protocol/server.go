@@ -82,7 +82,9 @@ func (s *Server) Process(ctx context.Context) error {
 			}
 			major, minor, _, _ := s.handshakeRequest(pkt) // todo check if auth matches what the handler can do
 			msg := s.handshakeResponse(major, minor)
-			s.Session.TransportOut.WritePacket(msg)
+			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
+				return err
+			}
 			s.State = SERVER_STATE_HANDSHAKE
 		case PKT_TYPE_TUNNEL_CREATE:
 			log.Printf("Tunnel create")
@@ -102,7 +104,10 @@ func (s *Server) Process(ctx context.Context) error {
 				}
 			}
 			msg := s.tunnelResponse()
-			s.Session.TransportOut.WritePacket(msg)
+			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
+				return err
+			}
+
 			s.State = SERVER_STATE_TUNNEL_CREATE
 		case PKT_TYPE_TUNNEL_AUTH:
 			log.Printf("Tunnel auth")
@@ -119,7 +124,9 @@ func (s *Server) Process(ctx context.Context) error {
 				}
 			}
 			msg := s.tunnelAuthResponse()
-			s.Session.TransportOut.WritePacket(msg)
+			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
+				return err
+			}
 			s.State = SERVER_STATE_TUNNEL_AUTHORIZE
 		case PKT_TYPE_CHANNEL_CREATE:
 			log.Printf("Channel create")
@@ -155,7 +162,9 @@ func (s *Server) Process(ctx context.Context) error {
 			}
 			log.Printf("Connection established")
 			msg := s.channelResponse()
-			s.Session.TransportOut.WritePacket(msg)
+			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
+				return err
+			}
 
 			// Make sure to start the flow from the RDP server first otherwise connections
 			// might hang eventually
