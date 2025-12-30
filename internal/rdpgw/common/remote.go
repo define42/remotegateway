@@ -8,10 +8,13 @@ import (
 	"strings"
 )
 
+type contextKey string
+
 const (
-	ClientIPCtx       = "ClientIP"
-	ProxyAddressesCtx = "ProxyAddresses"
-	RemoteAddressCtx  = "RemoteAddress"
+	ClientIPCtx       contextKey = "ClientIP"
+	ProxyAddressesCtx contextKey = "ProxyAddresses"
+	RemoteAddressCtx  contextKey = "RemoteAddress"
+	accessTokenCtx    contextKey = "access_token"
 )
 
 func EnrichContext(next http.Handler) http.Handler {
@@ -51,7 +54,7 @@ func GetClientIp(ctx context.Context) string {
 }
 
 func GetAccessToken(ctx context.Context) string {
-	token, ok := ctx.Value("access_token").(string)
+	token, ok := ctx.Value(accessTokenCtx).(string)
 	if !ok {
 		log.Printf("cannot get access token from context")
 		return ""

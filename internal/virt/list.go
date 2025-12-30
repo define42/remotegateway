@@ -183,7 +183,7 @@ func GetIpOfVm(vmName string) (string, error) {
 		log.Printf("lookup domain %s: %v", vmName, err)
 		return "", err
 	}
-	defer dom.Free()
+	defer func() { _ = dom.Free() }()
 
 	ips := domainIPs(*dom, vmName)
 	if len(ips) == 0 {

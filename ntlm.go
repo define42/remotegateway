@@ -123,20 +123,12 @@ func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte, scheme
 		log.Printf("Missing NTLM challenge for %s", ntlmChallengeKey(r))
 		return "", a.ntlmChallengeError(r, scheme)
 	}
-	/*
-		if normalizeUser(msg.UserName) != user {
-			log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
-			return "", a.ntlmChallengeError(r, scheme)
-		}*/
+
 	userLdap, ok := getSessionFromUserName(msg.UserName)
 	if !ok {
 		log.Printf("NTLM auth failed, user %q not found", msg.UserName)
 		return "", a.ntlmChallengeError(r, scheme)
 	}
-	//fmt.Println("userLdap.User.Password", userLdap.User.Password)
-
-	//ntlmV2Hash := ntlmV2Hash(userLdap.User.Password, msg.UserName, msg.DomainName)
-	//ntlmV2Hash := userLdap.User.NtlmPassword
 
 	if !verifyNTLMv2Response(challenge, userLdap.User.NtlmPassword, msg.NtChallengeResponse) {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
