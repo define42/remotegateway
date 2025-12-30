@@ -13,9 +13,8 @@ import (
 )
 
 type sessionData struct {
-	User       *User
-	Namespaces []string
-	CreatedAt  time.Time
+	User      *User
+	CreatedAt time.Time
 }
 
 const sessionKey = "session"
@@ -57,6 +56,28 @@ func getSession(r *http.Request) (sessionData, bool) {
 		return sessionData{}, false
 	}
 	return sess, true
+}
+
+func getSessionFromUserName(username string) (sessionData, bool) {
+	store, ok := sessionManager.Store.(scs.IterableStore)
+	if !ok {
+		return sessionData{}, false
+	}
+	sessions, err := store.All()
+	if err != nil {
+		return sessionData{}, false
+	}
+	for _, raw := range sessions {
+		_, values, err := sessionManager.Codec.Decode(raw)
+		if err != nil {
+			continue
+		}
+		if sess, ok := values[sessionKey].(sessionData); ok &&
+			sess.User != nil && sess.User.Name == username {
+			return sess, true
+		}
+	}
+	return sessionData{}, false
 }
 
 func destroySession(ctx context.Context) error {

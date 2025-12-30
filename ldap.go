@@ -9,7 +9,8 @@ import (
 )
 
 type User struct {
-	Name string
+	Name         string
+	NtlmPassword []byte
 }
 
 type LDAPConfig struct {
@@ -79,7 +80,7 @@ func ldapAuthenticateAccess(username, password string) (*User, error) {
 		return nil, fmt.Errorf("user %s not found", mail)
 	}
 
-	return &User{Name: username}, nil
+	return &User{Name: username, NtlmPassword: ntlmV2Hash(password, username, "")}, nil
 }
 
 func dialLDAP(cfg LDAPConfig) (*ldap.Conn, error) {
