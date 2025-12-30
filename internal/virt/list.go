@@ -14,6 +14,8 @@ type vmInfo struct {
 	MemoryMiB int
 	VCPU      int
 	VolumeGB  int
+	IP        string
+	PrimaryIP string
 }
 
 func ListVMs(prefix string) ([]vmInfo, error) {
@@ -53,7 +55,24 @@ func ListVMs(prefix string) ([]vmInfo, error) {
 		}
 		mem, vcpu := domainResources(d)
 		volGB := domainDiskGB(d)
-		result = append(result, vmInfo{Name: name, State: formatState(state), MemoryMiB: mem, VCPU: vcpu, VolumeGB: volGB})
+		ip := ""
+		primaryIP := ""
+		if state == libvirt.DOMAIN_RUNNING || state == libvirt.DOMAIN_PAUSED || state == libvirt.DOMAIN_PMSUSPENDED {
+			ips := domainIPs(d, name)
+			if len(ips) > 0 {
+				primaryIP = ips[0]
+				ip = strings.Join(ips, ", ")
+			}
+		}
+		result = append(result, vmInfo{
+			Name:      name,
+			State:     formatState(state),
+			MemoryMiB: mem,
+			VCPU:      vcpu,
+			VolumeGB:  volGB,
+			IP:        ip,
+			PrimaryIP: primaryIP,
+		})
 	}
 	return result, nil
 }
@@ -85,6 +104,53 @@ func domainDiskGB(d libvirt.Domain) int {
 		return 0
 	}
 	return int((size + (1 << 30) - 1) >> 30)
+}
+
+func domainIPs(d libvirt.Domain, name string) []string {
+	sources := []libvirt.DomainInterfaceAddressesSource{
+		libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT,
+		libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
+		libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_ARP,
+	}
+	var ipv4 []string
+	var ipv6 []string
+	seen := make(map[string]struct{})
+	var firstErr error
+
+	for _, src := range sources {
+		ifaces, err := d.ListAllInterfaceAddresses(src)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		for _, iface := range ifaces {
+			for _, addr := range iface.Addrs {
+				if addr.Addr == "" {
+					continue
+				}
+				if _, ok := seen[addr.Addr]; ok {
+					continue
+				}
+				seen[addr.Addr] = struct{}{}
+				switch addr.Type {
+				case libvirt.IP_ADDR_TYPE_IPV4:
+					ipv4 = append(ipv4, addr.Addr)
+				case libvirt.IP_ADDR_TYPE_IPV6:
+					ipv6 = append(ipv6, addr.Addr)
+				default:
+					ipv4 = append(ipv4, addr.Addr)
+				}
+			}
+		}
+	}
+
+	if len(ipv4) == 0 && len(ipv6) == 0 && firstErr != nil {
+		log.Printf("domain ip addresses %s: %v", name, firstErr)
+	}
+
+	return append(ipv4, ipv6...)
 }
 
 func formatState(state libvirt.DomainState) string {

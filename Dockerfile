@@ -6,7 +6,7 @@ WORKDIR /app
 
 RUN apk add --no-cache \
     build-base \
-    pkgconf libvirt-dev
+    pkgconf libvirt-dev nmap
 
 # Enable static binary
 ENV CGO_ENABLED=0 \

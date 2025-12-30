@@ -1,12 +1,4 @@
 services:
-  workstation:
-    image:  scottyhardy/docker-remote-desktop:latest
-    restart: always
-    environment:
-      REGISTRY_HTTP_ADDR: :5000
-      REGISTRY_STORAGE_DELETE_ENABLED: true
-
-
   gateway:
     build: ./
     restart: always
@@ -15,5 +7,19 @@ services:
       - "8443:8443"
     volumes:
       - /var/run/libvirt:/var/run/libvirt
-    depends_on:
-      - workstation
+    networks:
+      virbr0-net:
+        ipv4_address: 192.168.122.254
+      app-net:           # host-access + port publishing
+networks:
+  virbr0-net:
+    driver: macvlan
+    driver_opts:
+      parent: virbr0
+    ipam:
+      config:
+        - subnet: 192.168.122.0/24
+          gateway: 192.168.122.1
+  app-net:
+    driver: bridge
+

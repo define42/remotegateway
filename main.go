@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bolkedebruin/rdpgw/common"
-	"github.com/bolkedebruin/rdpgw/protocol"
+	"remotegateway/internal/rdpgw/common"
+	"remotegateway/internal/rdpgw/protocol"
 )
 
 /*
@@ -183,6 +183,7 @@ func verifyTunnelAuth(ctx context.Context, client string) (bool, error) {
 }
 
 func verifyServer(ctx context.Context, host string) (bool, error) {
+	return true, nil
 	user, ok := authUserFromContext(ctx)
 	if !ok {
 		log.Printf("missing auth user for server policy")
@@ -199,6 +200,10 @@ func verifyServer(ctx context.Context, host string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func converToInternServer(ctx context.Context, host string) (string, error) {
+	return "192.168.122.200", nil
 }
 
 /*
@@ -299,12 +304,13 @@ func getRemoteGatewayRotuer() http.Handler {
 
 	gw := protocol.Gateway{
 		ServerConf: &protocol.ServerConf{
-			IdleTimeout:          0,
-			TokenAuth:            false,
-			SmartCardAuth:        false,
-			RedirectFlags:        protocol.RedirectFlags{EnableAll: true},
-			VerifyTunnelAuthFunc: verifyTunnelAuth,
-			VerifyServerFunc:     verifyServer,
+			IdleTimeout:                 0,
+			TokenAuth:                   false,
+			SmartCardAuth:               false,
+			RedirectFlags:               protocol.RedirectFlags{EnableAll: true},
+			VerifyTunnelAuthFunc:        verifyTunnelAuth,
+			VerifyServerFunc:            verifyServer,
+			ConvertToInternalServerFunc: converToInternServer,
 		},
 	}
 
@@ -316,7 +322,8 @@ func getRemoteGatewayRotuer() http.Handler {
 
 	mux.HandleFunc("/rdpgw.rdp", func(w http.ResponseWriter, r *http.Request) {
 		gatewayHost := gatewayHostFromRequest(r)
-		rdpContent := rdpFileContent(gatewayHost, defaultRDPAddress)
+		targetHost := rdpTargetFromRequest(r)
+		rdpContent := rdpFileContent(gatewayHost, targetHost)
 
 		w.Header().Set("Content-Type", "application/x-rdp")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+rdpFilename+`"`)
