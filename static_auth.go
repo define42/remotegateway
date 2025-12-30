@@ -22,8 +22,8 @@ type StaticAuth struct {
 	challenges map[string]ntlmChallengeState
 }
 
-const staticUser = "ubuntu"
-const staticPassword = "ubuntu"
+const staticUser = "testuser"
+const staticPassword = "testpassword"
 
 type authChallenge struct {
 	header string

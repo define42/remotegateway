@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -183,45 +184,44 @@ func verifyTunnelAuth(ctx context.Context, client string) (bool, error) {
 	return true, nil
 }
 
+/*
 func verifyServer(ctx context.Context, host string) (bool, error) {
-	return true, nil
 	user, ok := authUserFromContext(ctx)
 	if !ok {
 		log.Printf("missing auth user for server policy")
 		return false, nil
 	}
-
-	target, err := resolveTarget(user)
-	if err != nil {
-		log.Printf("failed to resolve target for user %s: %v", user, err)
-		return false, nil
+	if host == "" || user == "" {
+		log.Printf("empty host or user in server policy: host=%q user=%q", host, user)
+		return false, fmt.Errorf("empty host or user")
 	}
 
-	if !strings.EqualFold(host, target) {
-		return false, nil
+	if strings.HasPrefix(host, user) {
+		log.Printf("allowing server for user=%s host=%s", user, host)
+		return true, nil
 	}
-	return true, nil
-}
+	log.Printf("denying server for user=%s host=%s", user, host)
+	return false, fmt.Errorf("denying server for user=%s host=%s", user, host)
+}*/
 
 func converToInternServer(ctx context.Context, host string) (string, error) {
-	return virt.GetIpOfVm(host)
-}
 
-/*
-   ---------------------------
-   RDP target resolver
-   ---------------------------
-*/
-
-func resolveTarget(user string) (string, error) {
-	switch strings.ToLower(normalizeUser(user)) {
-	case "ubuntu":
-		return "workstation:3389", nil
-	case "bob":
-		return "10.0.0.11:3389", nil
-	default:
-		return "", errors.New("no RDP target assigned")
+	user, ok := authUserFromContext(ctx)
+	if !ok {
+		log.Printf("missing auth user for server policy")
+		return "", fmt.Errorf("missing auth user")
 	}
+
+	if host == "" || user == "" {
+		log.Printf("empty host or user in server policy: host=%q user=%q", host, user)
+		return "", fmt.Errorf("empty host or user")
+	}
+
+	if strings.HasPrefix(host, user) {
+		return virt.GetIpOfVm(host)
+	}
+
+	return "", fmt.Errorf("denying server for user=%s host=%s", user, host)
 }
 
 func ensureTLSCert(certPath, keyPath string) error {
@@ -310,7 +310,6 @@ func getRemoteGatewayRotuer() http.Handler {
 			SmartCardAuth:               false,
 			RedirectFlags:               protocol.RedirectFlags{EnableAll: true},
 			VerifyTunnelAuthFunc:        verifyTunnelAuth,
-			VerifyServerFunc:            verifyServer,
 			ConvertToInternalServerFunc: converToInternServer,
 		},
 	}
