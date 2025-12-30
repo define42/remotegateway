@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"net"
 )
 
@@ -24,60 +23,6 @@ type ClientConfig struct {
 	Server        string
 	Port          int
 	Name          string
-}
-
-func (c *ClientConfig) ConnectAndForward() error {
-	c.Session.TransportOut.WritePacket(c.handshakeRequest())
-
-	for {
-		pt, sz, pkt, err := readMessage(c.Session.TransportIn)
-		if err != nil {
-			log.Printf("Client:Cannot read message from stream %s", err)
-			return err
-		}
-
-		switch pt {
-		case PKT_TYPE_HANDSHAKE_RESPONSE:
-			caps, err := c.handshakeResponse(pkt)
-			if err != nil {
-				log.Printf("Cannot connect to %s due to %s", c.Server, err)
-				return err
-			}
-			log.Printf("Handshake response received. Caps: %d", caps)
-			c.Session.TransportOut.WritePacket(c.tunnelRequest())
-		case PKT_TYPE_TUNNEL_RESPONSE:
-			tid, caps, err := c.tunnelResponse(pkt)
-			if err != nil {
-				log.Printf("Cannot setup tunnel due to %s", err)
-				return err
-			}
-			log.Printf("Tunnel creation succesful. Tunnel id: %d and caps %d", tid, caps)
-			c.Session.TransportOut.WritePacket(c.tunnelAuthRequest())
-		case PKT_TYPE_TUNNEL_AUTH_RESPONSE:
-			flags, timeout, err := c.tunnelAuthResponse(pkt)
-			if err != nil {
-				log.Printf("Cannot do tunnel auth due to %s", err)
-				return err
-			}
-			log.Printf("Tunnel auth succesful. Flags: %d and timeout %d", flags, timeout)
-			c.Session.TransportOut.WritePacket(c.channelRequest())
-		case PKT_TYPE_CHANNEL_RESPONSE:
-			cid, err := c.channelResponse(pkt)
-			if err != nil {
-				log.Printf("Cannot do tunnel auth due to %s", err)
-				return err
-			}
-			if cid < 1 {
-				log.Printf("Channel id (%d) is smaller than 1. This doesnt work for Windows clients", cid)
-			}
-			log.Printf("Channel creation succesful. Channel id: %d", cid)
-			go forward(c.LocalConn, c.Session.TransportOut)
-		case PKT_TYPE_DATA:
-			receive(pkt, c.LocalConn)
-		default:
-			log.Printf("Unknown packet type received: %d size %d", pt, sz)
-		}
-	}
 }
 
 func (c *ClientConfig) handshakeRequest() []byte {
