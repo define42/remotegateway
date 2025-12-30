@@ -14,5 +14,5 @@ run:
 	docker compose up
 
 rdp:
-	xfreerdp /gt:https  /gateway-usage-method:direct  /v:testuser_test-vm /gu:testuser /gp:testpassword  /g:localhost:8443   /u:testuser   /p:testpassword   /cert:ignore /gt:https  
+	xfreerdp /gt:https  /gateway-usage-method:direct  /v:testuser_test-vm /gu:testuser /gp:dogood  /g:localhost:8443   /u:testuser   /p:testpassword   /cert:ignore /gt:https  
 

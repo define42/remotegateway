@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"net/http"
@@ -55,6 +56,22 @@ func TestAuthenticateNegotiateChallenge(t *testing.T) {
 }
 
 func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	baseURL := setupLDAPProxyServer(t, ctx)
+
+	loginClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	assertLoginSuccess(t, ctx, baseURL, loginClient, "testuser", "dogood")
+
+
+	
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
 	key := ntlmChallengeKey(req)
@@ -67,7 +84,7 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 		},
 	}
 
-	domain := "DOMAIN"
+	domain := ""
 	ntResponse := buildTestNTLMv2Response(challenge, staticUser, domain, staticPassword)
 	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
 	req.Header.Set("Authorization", "NTLM "+base64.StdEncoding.EncodeToString(msg))

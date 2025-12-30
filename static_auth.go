@@ -23,7 +23,7 @@ type StaticAuth struct {
 }
 
 const staticUser = "testuser"
-const staticPassword = "testpassword"
+const staticPassword = "dogood"
 
 type authChallenge struct {
 	header string
@@ -69,7 +69,7 @@ func (a *StaticAuth) Authenticate(
 			case ntlmMessageTypeNegotiate:
 				return "", a.ntlmChallengeError(r, canonicalScheme)
 			case ntlmMessageTypeAuthenticate:
-				user, err := a.verifyNTLMAuthenticate(r, ntlmToken, canonicalScheme, staticUser, staticPassword)
+				user, err := a.verifyNTLMAuthenticate(r, ntlmToken, canonicalScheme)
 				if err != nil {
 					return "", err
 				}

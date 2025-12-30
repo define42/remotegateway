@@ -8,7 +8,7 @@ import (
 const (
 	testVMName   = "test-vm"
 	testUsername = "testuser"
-	testPassword = "testpassword"
+	testPassword = "dogood"
 )
 
 func TestStartVM(t *testing.T) {

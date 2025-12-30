@@ -242,11 +242,11 @@ func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 		},
 	}
 
-	domain := "DOMAIN"
+	domain := ""
 	ntResponse := buildTestNTLMv2Response(challenge, staticUser, domain, staticPassword)
 	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
 
-	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM", staticUser, staticPassword)
+	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM")
 	if err != nil {
 		t.Fatalf("expected NTLM auth to succeed: %v", err)
 	}
@@ -258,11 +258,11 @@ func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 func TestVerifyNTLMAuthenticateMissingChallenge(t *testing.T) {
 	auth := &StaticAuth{}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	domain := "DOMAIN"
+	domain := ""
 	ntResponse := buildTestNTLMv2Response([]byte{1, 2, 3, 4, 5, 6, 7, 8}, staticUser, domain, staticPassword)
 	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
 
-	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM", staticUser, staticPassword)
+	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM")
 	if err == nil {
 		t.Fatalf("expected challenge error for missing NTLM challenge")
 	}
@@ -291,12 +291,12 @@ func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
 		},
 	}
 
-	domain := "DOMAIN"
+	domain := ""
 	ntResponse := buildTestNTLMv2Response(challenge, staticUser, domain, staticPassword)
 	ntResponse[0] ^= 0xFF
 	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
 
-	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM", staticUser, staticPassword)
+	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM")
 	if err == nil {
 		t.Fatalf("expected NTLM auth failure for invalid response")
 	}

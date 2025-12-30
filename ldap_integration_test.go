@@ -30,7 +30,7 @@ func TestLDAPAuthenticateWithGlauthConfig(t *testing.T) {
 	os.Setenv("LDAP_USER_DOMAIN", "@example.com")
 	ldapCfg = loadLDAPConfig()
 
-	u, err := ldapAuthenticate("hackers", "dogood")
+	u, err := ldapAuthenticate("testuser", "dogood")
 	if err != nil {
 		t.Fatalf("unexpected auth failure: %v", err)
 	}
@@ -98,10 +98,10 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 			return http.ErrUseLastResponse
 		},
 	}
-	assertLoginSuccess(t, ctx, baseURL, loginClient, "hackers", "dogood")
+	assertLoginSuccess(t, ctx, baseURL, loginClient, "testuser", "dogood")
 	assertLoginSuccess(t, ctx, baseURL, loginClient, "serviceuser", "mysecret")
-	assertLoginFailure(t, ctx, baseURL, loginClient, "hackers", "wrongpass", "Invalid credentials.")
-	assertLoginFailure(t, ctx, baseURL, loginClient, "hackers", "", "Missing credentials.")
+	assertLoginFailure(t, ctx, baseURL, loginClient, "testuser", "wrongpass", "Invalid credentials.")
+	assertLoginFailure(t, ctx, baseURL, loginClient, "testuser", "", "Missing credentials.")
 }
 
 type requestCase struct {
