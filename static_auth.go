@@ -79,18 +79,7 @@ func (a *StaticAuth) Authenticate(
 			}
 		}
 	}
-	fmt.Println("###################################################")
-	return "", errors.New("invalid username or password")
-
-	username, password, ok := r.BasicAuth()
-	if !ok {
-		return "", errors.New("missing credentials")
-	}
-	if username != staticUser || password != staticPassword {
-		return "", errors.New("invalid username or password")
-	}
-
-	return normalizeUser(username), nil
+	return "", errors.New("authHeader missing or invalid")
 }
 
 func splitAuthHeader(header string) (string, string) {
