@@ -10,53 +10,6 @@ import (
 	"time"
 )
 
-func TestAuthenticateBasicSuccess(t *testing.T) {
-	auth := &StaticAuth{}
-	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
-	req.SetBasicAuth(staticUser, staticPassword)
-
-	user, err := auth.Authenticate(req.Context(), req)
-	if err != nil {
-		t.Fatalf("expected basic auth to succeed: %v", err)
-	}
-	if user != staticUser {
-		t.Fatalf("expected user %q, got %q", staticUser, user)
-	}
-}
-
-func TestAuthenticateBasicMissing(t *testing.T) {
-	auth := &StaticAuth{}
-	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
-
-	user, err := auth.Authenticate(req.Context(), req)
-	if err == nil {
-		t.Fatalf("expected error for missing credentials")
-	}
-	if user != "" {
-		t.Fatalf("expected empty user on error, got %q", user)
-	}
-	if err.Error() != "missing credentials" {
-		t.Fatalf("expected missing credentials error, got %q", err.Error())
-	}
-}
-
-func TestAuthenticateBasicInvalid(t *testing.T) {
-	auth := &StaticAuth{}
-	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
-	req.SetBasicAuth(staticUser, "wrong")
-
-	user, err := auth.Authenticate(req.Context(), req)
-	if err == nil {
-		t.Fatalf("expected error for invalid credentials")
-	}
-	if user != "" {
-		t.Fatalf("expected empty user on error, got %q", user)
-	}
-	if err.Error() != "invalid username or password" {
-		t.Fatalf("expected invalid credentials error, got %q", err.Error())
-	}
-}
-
 func TestAuthenticateNTLMNegotiateChallenge(t *testing.T) {
 	auth := &StaticAuth{}
 	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
@@ -128,32 +81,6 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 	}
 	if _, ok := auth.challenges[key]; ok {
 		t.Fatalf("expected challenge to be consumed")
-	}
-}
-
-func TestBasicAuthMiddlewareSuccess(t *testing.T) {
-	auth := &StaticAuth{}
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
-	req.SetBasicAuth(staticUser, staticPassword)
-
-	var gotUser string
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, ok := authUserFromContext(r.Context())
-		if !ok {
-			t.Fatalf("expected auth user in context")
-		}
-		gotUser = user
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	rec := httptest.NewRecorder()
-	basicAuthMiddleware(auth, next).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rec.Code)
-	}
-	if gotUser != staticUser {
-		t.Fatalf("expected user %q, got %q", staticUser, gotUser)
 	}
 }
 

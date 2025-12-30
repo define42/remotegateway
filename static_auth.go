@@ -79,6 +79,8 @@ func (a *StaticAuth) Authenticate(
 			}
 		}
 	}
+	fmt.Println("###################################################")
+	return "", errors.New("invalid username or password")
 
 	username, password, ok := r.BasicAuth()
 	if !ok {
