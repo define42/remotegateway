@@ -361,7 +361,7 @@ func registerAPI(api huma.API) {
 				req, w := humachi.Unwrap(ctx)
 				gatewayHost := gatewayHostFromRequest(req)
 				targetHost := rdpTargetFromRequest(req)
-				renderIndexPage(w, gatewayHost, targetHost)
+				renderDashboardPage(w, gatewayHost, targetHost)
 			},
 		}, nil
 	}, func(op *huma.Operation) {

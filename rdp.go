@@ -217,7 +217,7 @@ const indexHTML = `<!doctype html>
 </html>
 `
 
-var indexTemplate = template.Must(template.New("index").Parse(indexHTML))
+var dashboardTemplate = template.Must(template.New("dashboard").Parse(indexHTML))
 
 type indexVM struct {
 	Name      string
@@ -229,7 +229,7 @@ type indexVM struct {
 	VolumeGB  int
 }
 
-func renderIndexPage(w http.ResponseWriter, gatewayHost, targetHost string) {
+func renderDashboardPage(w http.ResponseWriter, gatewayHost, targetHost string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	vmList, err := virt.ListVMs("")
 	var vmRows []indexVM
@@ -270,7 +270,7 @@ func renderIndexPage(w http.ResponseWriter, gatewayHost, targetHost string) {
 		VMs:      vmRows,
 		VMError:  vmError,
 	}
-	if err := indexTemplate.Execute(w, data); err != nil {
+	if err := dashboardTemplate.Execute(w, data); err != nil {
 		http.Error(w, "failed to render page", http.StatusInternalServerError)
 		return
 	}
