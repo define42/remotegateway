@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -314,121 +312,6 @@ func startRegistry(ctx context.Context, t *testing.T, network string) (string, f
 	}
 }
 
-func startProxy(ctx context.Context, t *testing.T, network, certDir string) (string, func()) {
-	t.Helper()
-
-	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    ".",
-			Dockerfile: "Dockerfile",
-		},
-		ExposedPorts: []string{"8443/tcp"},
-		Files: []testcontainers.ContainerFile{
-			{HostFilePath: certDir, ContainerFilePath: "/certs", FileMode: 0o755},
-		},
-		WaitingFor: wait.ForLog("listening on :8443").
-			WithStartupTimeout(2 * time.Minute).
-			WithPollInterval(2 * time.Second),
-	}
-
-	if network != "" {
-		req.Networks = []string{network}
-		req.NetworkAliases = map[string][]string{
-			network: {"proxy"},
-		}
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("start proxy: %v", err)
-	}
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("proxy host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "8443/tcp")
-	if err != nil {
-		t.Fatalf("proxy port: %v", err)
-	}
-
-	return fmt.Sprintf("%s:%s", host, port.Port()), func() {
-		_ = container.Terminate(context.Background())
-	}
-}
-
-func addDockerTrust(t *testing.T, configDir, registry, certPath string) {
-	t.Helper()
-
-	data, err := os.ReadFile(certPath)
-	if err != nil {
-		t.Fatalf("read cert: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(configDir, "certs.d", registry), 0o755); err != nil {
-		t.Fatalf("mk cert dir: %v", err)
-	}
-	dest := filepath.Join(configDir, "certs.d", registry, "ca.crt")
-	if err := os.WriteFile(dest, data, 0o600); err != nil {
-		t.Fatalf("write ca: %v", err)
-	}
-}
-
-func writeDockerAuth(t *testing.T, configDir, registry, user, pass string) {
-	t.Helper()
-	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", user, pass)))
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mk config dir: %v", err)
-	}
-	cfg := fmt.Sprintf(`{"auths":{"%s":{"auth":"%s"},"https://%s":{"auth":"%s"}}}`, registry, auth, registry, auth)
-	if err := os.WriteFile(filepath.Join(configDir, "config.json"), []byte(cfg), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-}
-
-func ensureBaseImage(t *testing.T, configDir, image string) string {
-	t.Helper()
-	cmd := exec.Command("docker", "--config", configDir, "pull", image)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("docker pull %s: %v", image, err)
-	}
-	return image
-}
-
-func dockerTag(t *testing.T, configDir, src, target string) {
-	t.Helper()
-	cmd := exec.Command("docker", "--config", configDir, "tag", src, target)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("docker tag: %v\n%s", err, string(out))
-	}
-}
-
-func dockerPush(t *testing.T, configDir, target string) {
-	t.Helper()
-	cmd := exec.Command("docker", "--config", configDir, "push", target)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("docker push: %v\n%s", err, string(out))
-	}
-}
-
-func dockerRmi(t *testing.T, configDir, target string) {
-	t.Helper()
-	cmd := exec.Command("docker", "--config", configDir, "rmi", "-f", target)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("docker rmi %s: %v", target, err)
-	}
-}
-
-func dockerPull(t *testing.T, configDir, target string) {
-	t.Helper()
-	cmd := exec.Command("docker", "--config", configDir, "pull", target)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("docker pull: %v\n%s", err, string(out))
-	}
-}
-
 func pathRelative(t *testing.T, elems ...string) string {
 	t.Helper()
 	p := filepath.Join(elems...)
@@ -437,20 +320,4 @@ func pathRelative(t *testing.T, elems ...string) string {
 		t.Fatalf("abs path: %v", err)
 	}
 	return abs
-}
-
-func tempDirInRepo(t *testing.T, prefix string) string {
-	t.Helper()
-	base := pathRelative(t, "..", "tmp")
-	if err := os.MkdirAll(base, 0o755); err != nil {
-		t.Fatalf("mk temp base: %v", err)
-	}
-	dir, err := os.MkdirTemp(base, prefix)
-	if err != nil {
-		t.Fatalf("mk temp dir: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
-	return dir
 }
