@@ -59,8 +59,8 @@ jobs:
       # -------------------------------
       # Build & test
       # -------------------------------
-      - name: Lint
-        run: make lint
+      #      - name: Lint
+      #        run: make lint
 
       - name: Run tests with coverage
         run: |

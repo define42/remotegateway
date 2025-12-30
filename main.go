@@ -166,6 +166,9 @@ func logRequests(next http.Handler) http.Handler {
 	})
 }
 
+// getIPOfVm allows tests to stub VM lookups.
+var getIPOfVm = virt.GetIpOfVm
+
 func converToInternServer(ctx context.Context, host string) (string, error) {
 
 	user, ok := authUserFromContext(ctx)
@@ -180,7 +183,7 @@ func converToInternServer(ctx context.Context, host string) (string, error) {
 	}
 
 	if strings.HasPrefix(host, user) {
-		return virt.GetIpOfVm(host)
+		return getIPOfVm(host)
 	}
 
 	return "", fmt.Errorf("denying server for user=%s host=%s", user, host)
