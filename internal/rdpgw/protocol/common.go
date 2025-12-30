@@ -82,13 +82,13 @@ func createPacket(pktType uint16, data []byte) (packet []byte) {
 	size := len(data) + 8
 	buf := new(bytes.Buffer)
 
-	binary.Write(buf, binary.LittleEndian, uint16(pktType))
+	_ = binary.Write(buf, binary.LittleEndian, uint16(pktType))
 
-	binary.Write(buf, binary.LittleEndian, uint16(0)) // reserved
+	_ = binary.Write(buf, binary.LittleEndian, uint16(0)) // reserved
 
-	binary.Write(buf, binary.LittleEndian, uint32(size))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(size))
 
-	buf.Write(data)
+	_, _ = buf.Write(data)
 
 	return buf.Bytes()
 }

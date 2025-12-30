@@ -188,7 +188,10 @@ func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s
 		log.Printf("Opening RDGOUT for client %s", common.GetClientIp(r.Context()))
 
 		s.TransportOut = out
-		out.SendAccept(true)
+		if err := out.SendAccept(true); err != nil {
+			log.Printf("Error sending accept for RDG OUT data channel: %s", err)
+			return
+		}
 
 		c.Set(s.ConnId, s, cache.DefaultExpiration)
 	case MethodRDGIN:
@@ -207,7 +210,10 @@ func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s
 			c.Set(s.ConnId, s, cache.DefaultExpiration)
 
 			log.Printf("Opening RDGIN for client %s", common.GetClientIp(r.Context()))
-			in.SendAccept(false)
+			if err := in.SendAccept(false); err != nil {
+				log.Printf("Error sending accept for RDG IN data channel: %s", err)
+				return
+			}
 
 			// read some initial data
 			in.Drain()

@@ -59,24 +59,39 @@ func (t *LegacyPKT) Close() error {
 // This enables a reverse proxy to start allowing data from the RDG server to the RDG client. The RDG server does
 // not specify an entity length in its response. It uses HTTP 1.0 semantics to send the entity body and closes the
 // connection after the last byte is sent.
-func (t *LegacyPKT) SendAccept(doSeed bool) {
-	t.Writer.WriteString(HttpOK)
-	t.Writer.WriteString("Date: " + time.Now().Format(time.RFC1123) + crlf)
-	if !doSeed {
-		t.Writer.WriteString("Content-Length: 0" + crlf)
+func (t *LegacyPKT) SendAccept(doSeed bool) error {
+	if _, err := t.Writer.WriteString(HttpOK); err != nil {
+		return err
 	}
-	t.Writer.WriteString(crlf)
+
+	if _, err := t.Writer.WriteString("Date: " + time.Now().Format(time.RFC1123) + crlf); err != nil {
+		return err
+	}
+
+	if !doSeed {
+		if _, err := t.Writer.WriteString("Content-Length: 0" + crlf); err != nil {
+			return err
+		}
+	}
+	if _, err := t.Writer.WriteString(crlf); err != nil {
+		return err
+	}
 
 	if doSeed {
 		seed := make([]byte, 10)
-		rand.Read(seed)
+		if _, err := rand.Read(seed); err != nil {
+			return err
+		}
+
 		// docs say it's a seed but 2019 responds with ab cd * 5
-		t.Writer.Write(seed)
+		if _, err := t.Writer.Write(seed); err != nil {
+			return err
+		}
 	}
-	t.Writer.Flush()
+	return t.Writer.Flush()
 }
 
 func (t *LegacyPKT) Drain() {
 	p := make([]byte, 32767)
-	t.Conn.Read(p)
+	_, _ = t.Conn.Read(p)
 }
