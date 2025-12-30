@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -24,33 +23,17 @@ func TestGetRemoteGatewayRotuerHealth(t *testing.T) {
 
 func TestGetRemoteGatewayRotuerRDPFile(t *testing.T) {
 	handler := getRemoteGatewayRotuer()
-	req := httptest.NewRequest(http.MethodGet, "http://gw.example.com:8443/rdpgw.rdp", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://gw.example.com:8443/api/rdpgw.rdp", nil)
 	req.Host = "gw.example.com:8443"
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, rec.Code)
 	}
-	if got := rec.Header().Get("Content-Type"); got != "application/x-rdp" {
-		t.Fatalf("expected content type %q, got %q", "application/x-rdp", got)
-	}
-	if got := rec.Header().Get("Content-Disposition"); got != `attachment; filename="`+rdpFilename+`"` {
-		t.Fatalf("expected content disposition %q, got %q", `attachment; filename="`+rdpFilename+`"`, got)
-	}
-	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
-		t.Fatalf("expected cache control %q, got %q", "no-store", got)
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "screen mode id:i:2\r\n") {
-		t.Fatalf("expected fullscreen setting, got:\n%s", body)
-	}
-	if !strings.Contains(body, "full address:s:"+defaultRDPAddress+"\r\n") {
-		t.Fatalf("expected target address, got:\n%s", body)
-	}
-	if !strings.Contains(body, "gatewayhostname:s:gw.example.com:8443\r\n") {
-		t.Fatalf("expected gateway hostname, got:\n%s", body)
+	if loc := rec.Header().Get("Location"); loc != "/login" {
+		t.Fatalf("expected redirect to /login, got %q", loc)
 	}
 }
 
@@ -61,11 +44,11 @@ func TestGetRemoteGatewayRotuerRoot(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Download a preconfigured") {
-		t.Fatalf("expected index page content, got:\n%s", rec.Body.String())
+	if loc := rec.Header().Get("Location"); loc != "/login" {
+		t.Fatalf("expected redirect to /login, got %q", loc)
 	}
 }
 

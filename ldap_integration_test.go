@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
-	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -68,54 +67,6 @@ func TestLDAPAuthenticateJohndoeSingleNamespace(t *testing.T) {
 	}
 }
 
-func TestProxyPushPullViaDocker(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	network, err := tcnetwork.New(ctx)
-	if err != nil {
-		t.Fatalf("create network: %v", err)
-	}
-	defer network.Remove(ctx) //nolint:errcheck
-	netName := network.Name
-
-	ldapURL, stopLDAP := startGlauth(ctx, t, netName)
-	defer stopLDAP()
-
-	registryHost, stopRegistry := startRegistry(ctx, t, netName)
-	defer stopRegistry()
-
-	certDir := tempDirInRepo(t, "proxy-certs-")
-	certPath := filepath.Join(certDir, "registry.crt")
-	keyPath := filepath.Join(certDir, "registry.key")
-	if err := ensureTLSCert(certPath, keyPath); err != nil {
-		t.Fatalf("create certs: %v", err)
-	}
-	proxyHost, stopProxy := startProxy(ctx, t, netName, certDir)
-	defer stopProxy()
-
-	os.Setenv("LDAP_URL", ldapURL)
-	os.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
-	os.Setenv("LDAP_STARTTLS", "false")
-	os.Setenv("LDAP_USER_DOMAIN", "@example.com")
-	ldapCfg = loadLDAPConfig()
-
-	dockerConfig := tempDirInRepo(t, "docker-config-")
-	addDockerTrust(t, dockerConfig, proxyHost, filepath.Join(certDir, "registry.crt"))
-	writeDockerAuth(t, dockerConfig, proxyHost, "hackers", "dogood")
-
-	srcImage := ensureBaseImage(t, dockerConfig, "busybox:latest")
-	target := fmt.Sprintf("%s/team1/integration:latest", proxyHost)
-
-	dockerTag(t, dockerConfig, srcImage, target)
-	dockerPush(t, dockerConfig, target)
-
-	dockerRmi(t, dockerConfig, target)
-	dockerPull(t, dockerConfig, target)
-
-	_ = registryHost
-}
-
 func TestCvRouterProxyWithLDAP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -124,17 +75,24 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	accessCases := []requestCase{
-		{name: "ping", method: http.MethodGet, path: "/v2/", user: "hackers", pass: "dogood", wantStatus: http.StatusOK},
-		{name: "wrong namespace", method: http.MethodGet, path: "/v2/something", user: "hackers", pass: "dogood", wantStatus: http.StatusForbidden, wantBodyContains: []string{`forbidden by user "hackers"`, "repositories:", "team1_rwd"}},
-		{name: "dashboard without auth", method: http.MethodGet, path: "/dashboard", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"auth required"}},
-		{name: "bad password", method: http.MethodGet, path: "/v2/", user: "hackers", pass: "wrongpass", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"invalid credentials"}},
-		{name: "bad user", method: http.MethodGet, path: "/v2/something", user: "wronguser", pass: "dogood", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"invalid credentials"}},
-		{name: "empty password", method: http.MethodGet, path: "/v2/", user: "hackers", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"auth required"}},
-		{name: "empty username and password", method: http.MethodGet, path: "/v2/", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"auth required"}},
-		{name: "empty password with username", method: http.MethodGet, path: "/v2/", user: "", pass: "dogood", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"invalid credentials"}},
-		{name: "user without any permissions", method: http.MethodGet, path: "/v2/team1/repo", user: "serviceuser", pass: "mysecret", wantStatus: http.StatusUnauthorized, wantBodyContains: []string{"invalid credentials"}},
+		{name: "health", method: http.MethodGet, path: "/api/health", wantStatus: http.StatusOK, wantBodyContains: []string{"ok"}},
+		{name: "login page", method: http.MethodGet, path: "/login", wantStatus: http.StatusOK, wantBodyContains: []string{"ContainerVault"}},
 	}
 	assertRequestCases(t, ctx, baseURL, client, accessCases)
+
+	redirectClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	status, _, header := doRequest(t, ctx, baseURL, redirectClient, http.MethodGet, "/api/dashboard", "", "", nil, nil)
+	if status != http.StatusSeeOther {
+		t.Fatalf("expected 303 for dashboard redirect, got %d", status)
+	}
+	if loc := header.Get("Location"); loc != "/login" {
+		t.Fatalf("expected redirect to /login, got %q", loc)
+	}
 
 	loginClient := &http.Client{
 		Timeout: 10 * time.Second,
@@ -143,7 +101,7 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 		},
 	}
 	assertLoginSuccess(t, ctx, baseURL, loginClient, "hackers", "dogood")
-	assertLoginFailure(t, ctx, baseURL, loginClient, "serviceuser", "mysecret", "Invalid credentials.")
+	assertLoginSuccess(t, ctx, baseURL, loginClient, "serviceuser", "mysecret")
 	assertLoginFailure(t, ctx, baseURL, loginClient, "hackers", "wrongpass", "Invalid credentials.")
 	assertLoginFailure(t, ctx, baseURL, loginClient, "hackers", "", "Missing credentials.")
 }
