@@ -176,7 +176,9 @@ func (s *Server) Process(ctx context.Context) error {
 				return errors.New("wrong state")
 			}
 			s.State = SERVER_STATE_OPENED
-			receive(pkt, s.Remote)
+			if err := receive(pkt, s.Remote); err != nil {
+				return err
+			}
 		case PKT_TYPE_KEEPALIVE:
 			// keepalives can be received while the channel is not open yet
 			if s.State < SERVER_STATE_CHANNEL_CREATE {

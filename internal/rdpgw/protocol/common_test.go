@@ -119,7 +119,9 @@ func TestReceiveWritesPayload(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		receive(buf.Bytes(), serverConn)
+		if err := receive(buf.Bytes(), serverConn); err != nil {
+			t.Errorf("receive failed: %v", err)
+		}
 		close(done)
 	}()
 

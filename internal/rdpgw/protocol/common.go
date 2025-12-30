@@ -83,8 +83,11 @@ func createPacket(pktType uint16, data []byte) (packet []byte) {
 	buf := new(bytes.Buffer)
 
 	binary.Write(buf, binary.LittleEndian, uint16(pktType))
+
 	binary.Write(buf, binary.LittleEndian, uint16(0)) // reserved
+
 	binary.Write(buf, binary.LittleEndian, uint32(size))
+
 	buf.Write(data)
 
 	return buf.Bytes()
@@ -97,9 +100,18 @@ func readHeader(data []byte) (packetType uint16, size uint32, packet []byte, err
 		return 0, 0, nil, errors.New("header too short, fragment likely")
 	}
 	r := bytes.NewReader(data)
-	binary.Read(r, binary.LittleEndian, &packetType)
-	r.Seek(4, io.SeekStart)
-	binary.Read(r, binary.LittleEndian, &size)
+	if err = binary.Read(r, binary.LittleEndian, &packetType); err != nil {
+		return 0, 0, nil, err
+	}
+
+	if _, err = r.Seek(4, io.SeekStart); err != nil {
+		return 0, 0, nil, err
+	}
+
+	if err = binary.Read(r, binary.LittleEndian, &size); err != nil {
+		return 0, 0, nil, err
+	}
+
 	if len(data) < int(size) {
 		return packetType, size, data[8:], errors.New("data incomplete, fragment received")
 	}
@@ -119,23 +131,41 @@ func forward(in net.Conn, out transport.Transport) {
 			log.Printf("Error reading from local conn %s", err)
 			break
 		}
-		binary.Write(b1, binary.LittleEndian, uint16(n))
-		b1.Write(buf[:n])
-		out.WritePacket(createPacket(PKT_TYPE_DATA, b1.Bytes()))
+		if err = binary.Write(b1, binary.LittleEndian, uint16(n)); err != nil {
+			log.Printf("Error writing to buffer %s", err)
+			break
+		}
+
+		if _, err = b1.Write(buf[:n]); err != nil {
+			log.Printf("Error writing to buffer %s", err)
+			break
+		}
+
+		if _, err = out.WritePacket(createPacket(PKT_TYPE_DATA, b1.Bytes())); err != nil {
+			log.Printf("Error writing to transport %s", err)
+			break
+		}
+
 		b1.Reset()
 	}
 }
 
 // receive data received from the gateway client, unwrap and forward the remote desktop server
-func receive(data []byte, out net.Conn) {
+func receive(data []byte, out net.Conn) error {
 	buf := bytes.NewReader(data)
 
 	var cblen uint16
-	binary.Read(buf, binary.LittleEndian, &cblen)
-	pkt := make([]byte, cblen)
-	binary.Read(buf, binary.LittleEndian, &pkt)
+	if err := binary.Read(buf, binary.LittleEndian, &cblen); err != nil {
+		return err
+	}
 
-	out.Write(pkt)
+	pkt := make([]byte, cblen)
+
+	if err := binary.Read(buf, binary.LittleEndian, &pkt); err != nil {
+		return err
+	}
+	_, err := out.Write(pkt)
+	return err
 }
 
 // wrapSyscallError takes an error and a syscall name. If the error is
