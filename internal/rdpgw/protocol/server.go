@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -90,7 +91,10 @@ func (s *Server) Process(ctx context.Context) error {
 					s.State, SERVER_STATE_HANDSHAKE)
 				return errors.New("wrong state")
 			}
-			_, cookie := s.tunnelRequest(pkt)
+			_, cookie, err := s.tunnelRequest(pkt)
+			if err != nil {
+				return fmt.Errorf("failed to parse tunnel request: %w", err)
+			}
 			if s.VerifyTunnelCreate != nil {
 				if ok, _ := s.VerifyTunnelCreate(ctx, cookie); !ok {
 					log.Printf("Invalid PAA cookie received from client %s", common.GetClientIp(ctx))
@@ -220,21 +224,35 @@ func (s *Server) handshakeRequest(data []byte) (major byte, minor byte, version 
 	return
 }
 
-func (s *Server) tunnelRequest(data []byte) (caps uint32, cookie string) {
+func (s *Server) tunnelRequest(data []byte) (caps uint32, cookie string, err error) {
 	var fields uint16
 
 	r := bytes.NewReader(data)
 
-	binary.Read(r, binary.LittleEndian, &caps)
-	binary.Read(r, binary.LittleEndian, &fields)
-	r.Seek(2, io.SeekCurrent)
+	if err = binary.Read(r, binary.LittleEndian, &caps); err != nil {
+		return
+	}
+
+	if err = binary.Read(r, binary.LittleEndian, &fields); err != nil {
+		return
+	}
+
+	if _, err = r.Seek(2, io.SeekCurrent); err != nil {
+		return
+	}
 
 	if fields == HTTP_TUNNEL_PACKET_FIELD_PAA_COOKIE {
 		var size uint16
-		binary.Read(r, binary.LittleEndian, &size)
+		if err = binary.Read(r, binary.LittleEndian, &size); err != nil {
+			return
+		}
+
 		cookieB := make([]byte, size)
-		r.Read(cookieB)
-		cookie, _ = DecodeUTF16(cookieB)
+		if _, err = r.Read(cookieB); err != nil {
+			return
+		}
+
+		cookie, err = DecodeUTF16(cookieB)
 	}
 	return
 }
