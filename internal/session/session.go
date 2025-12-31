@@ -1,9 +1,10 @@
-package main
+package session
 
 import (
 	"context"
 	"encoding/gob"
 	"net/http"
+	"remotegateway/internal/types"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -13,13 +14,13 @@ import (
 )
 
 type sessionData struct {
-	User      *User
+	User      *types.User
 	CreatedAt time.Time
 }
 
 const sessionKey = "session"
 
-var sessionManager = newSessionManager()
+var SessionManager = newSessionManager()
 
 func init() {
 	gob.Register(sessionData{})
@@ -39,11 +40,11 @@ func newSessionManager() *scs.SessionManager {
 	return manager
 }
 
-func createSession(ctx context.Context, u *User) error {
-	if err := sessionManager.RenewToken(ctx); err != nil {
+func CreateSession(ctx context.Context, u *types.User) error {
+	if err := SessionManager.RenewToken(ctx); err != nil {
 		return err
 	}
-	sessionManager.Put(ctx, sessionKey, sessionData{
+	SessionManager.Put(ctx, sessionKey, sessionData{
 		User:      u,
 		CreatedAt: time.Now(),
 	})
@@ -51,15 +52,15 @@ func createSession(ctx context.Context, u *User) error {
 }
 
 func getSession(r *http.Request) (sessionData, bool) {
-	sess, ok := sessionManager.Get(r.Context(), sessionKey).(sessionData)
+	sess, ok := SessionManager.Get(r.Context(), sessionKey).(sessionData)
 	if !ok || sess.User == nil {
 		return sessionData{}, false
 	}
 	return sess, true
 }
 
-func getSessionFromUserName(username string) (sessionData, bool) {
-	store, ok := sessionManager.Store.(scs.IterableStore)
+func GetSessionFromUserName(username string) (sessionData, bool) {
+	store, ok := SessionManager.Store.(scs.IterableStore)
 	if !ok {
 		return sessionData{}, false
 	}
@@ -68,7 +69,7 @@ func getSessionFromUserName(username string) (sessionData, bool) {
 		return sessionData{}, false
 	}
 	for _, raw := range sessions {
-		_, values, err := sessionManager.Codec.Decode(raw)
+		_, values, err := SessionManager.Codec.Decode(raw)
 		if err != nil {
 			continue
 		}
@@ -80,13 +81,13 @@ func getSessionFromUserName(username string) (sessionData, bool) {
 	return sessionData{}, false
 }
 
-func destroySession(ctx context.Context) error {
-	return sessionManager.Destroy(ctx)
+func DestroySession(ctx context.Context) error {
+	return SessionManager.Destroy(ctx)
 }
 
 type sessionContextKey struct{}
 
-func sessionMiddleware() func(huma.Context, func(huma.Context)) {
+func SessionMiddleware() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		req, w := humachi.Unwrap(ctx)
 

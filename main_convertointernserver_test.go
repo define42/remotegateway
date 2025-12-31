@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"remotegateway/internal/contextKey"
 	"strings"
 	"testing"
 )
@@ -22,7 +23,7 @@ func TestConverToInternServer(t *testing.T) {
 	})
 
 	t.Run("empty-host", func(t *testing.T) {
-		ctx := withAuthUser(context.Background(), "alice")
+		ctx := contextKey.WithAuthUser(context.Background(), "alice")
 		got, err := converToInternServer(ctx, "")
 		if err == nil {
 			t.Fatalf("expected error for empty host")
@@ -36,7 +37,7 @@ func TestConverToInternServer(t *testing.T) {
 	})
 
 	t.Run("prefix-allows", func(t *testing.T) {
-		ctx := withAuthUser(context.Background(), "alice")
+		ctx := contextKey.WithAuthUser(context.Background(), "alice")
 		prev := getIPOfVm
 		called := ""
 		getIPOfVm = func(vmName string) (string, error) {
@@ -58,7 +59,7 @@ func TestConverToInternServer(t *testing.T) {
 	})
 
 	t.Run("prefix-propagates-error", func(t *testing.T) {
-		ctx := withAuthUser(context.Background(), "alice")
+		ctx := contextKey.WithAuthUser(context.Background(), "alice")
 		prev := getIPOfVm
 		stubErr := errors.New("boom")
 		getIPOfVm = func(vmName string) (string, error) {
@@ -76,7 +77,7 @@ func TestConverToInternServer(t *testing.T) {
 	})
 
 	t.Run("denies-non-prefix", func(t *testing.T) {
-		ctx := withAuthUser(context.Background(), "alice")
+		ctx := contextKey.WithAuthUser(context.Background(), "alice")
 		got, err := converToInternServer(ctx, "bob-vm")
 		if err == nil {
 			t.Fatalf("expected deny error")

@@ -1,4 +1,4 @@
-package main
+package ntlm
 
 import (
 	"bytes"
@@ -6,7 +6,11 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
+	"remotegateway/internal/contextKey"
+	"remotegateway/internal/rdpgw/common"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -36,9 +40,9 @@ const (
 	ntlmAvIDMsvAvTimestamp uint16 = 7
 )
 
-type ntlmChallengeState struct {
-	challenge []byte
-	issuedAt  time.Time
+type NtlmChallengeState struct {
+	Challenge []byte
+	IssuedAt  time.Time
 }
 
 func NtlmChallengeKey(r *http.Request) string {
@@ -278,4 +282,93 @@ func hmacMD5(key []byte, data ...[]byte) []byte {
 		_, _ = mac.Write(d)
 	}
 	return mac.Sum(nil)
+}
+
+func BuildTestNTLMToken(messageType uint32) []byte {
+	token := make([]byte, 12)
+	copy(token[:8], []byte(ntlmSignature))
+	binary.LittleEndian.PutUint32(token[8:12], messageType)
+	return token
+}
+
+func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		fmt.Println("Basic auth middleware called")
+		user, err := authenticator.Authenticate(r.Context(), r)
+		if err != nil {
+			var challenge AuthChallenge
+			if errors.As(err, &challenge) {
+				w.Header().Add("WWW-Authenticate", challenge.Header)
+				w.Header().Add("WWW-Authenticate", `Basic realm="rdpgw"`)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			log.Printf(
+				"Gateway auth failed: remote=%s client_ip=%s method=%s path=%s conn_id=%s err=%v",
+				r.RemoteAddr,
+				common.GetClientIp(r.Context()),
+				r.Method,
+				r.URL.Path,
+				r.Header.Get("Rdg-Connection-Id"),
+				err,
+			)
+			w.Header().Set("WWW-Authenticate", `Basic realm="rdpgw"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := contextKey.WithAuthUser(r.Context(), user)
+		log.Printf(
+			"Gateway connect: user=%s remote=%s client_ip=%s method=%s path=%s conn_id=%s ua=%q",
+			user,
+			r.RemoteAddr,
+			common.GetClientIp(r.Context()),
+			r.Method,
+			r.URL.Path,
+			r.Header.Get("Rdg-Connection-Id"),
+			r.UserAgent(),
+		)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func BuildTestNTLMv2Response(challenge []byte, user, domain, password string) []byte {
+	ntlmHash := NtlmV2Hash(password, user, domain)
+	temp := []byte{0x10, 0x20, 0x30, 0x40}
+	proof := hmacMD5(ntlmHash, challenge, temp)
+	return append(append([]byte(nil), proof...), temp...)
+}
+
+func BuildTestNTLMAuthenticateMessage(user, domain string, ntResponse []byte, unicode bool) []byte {
+	lmResponse := []byte{0x01, 0x02, 0x03}
+	payloadOffset := 64
+	domainBytes := []byte(domain)
+	userBytes := []byte(user)
+	if unicode {
+		domainBytes = toUnicode(domain)
+		userBytes = toUnicode(user)
+	}
+
+	msg := ntlmAuthenticateMessageFields{
+		Header:                    newNTLMMessageHeader(ntlmMessageTypeAuthenticate),
+		LmChallengeResponse:       newNTLMVarField(&payloadOffset, len(lmResponse)),
+		NtChallengeResponse:       newNTLMVarField(&payloadOffset, len(ntResponse)),
+		DomainName:                newNTLMVarField(&payloadOffset, len(domainBytes)),
+		UserName:                  newNTLMVarField(&payloadOffset, len(userBytes)),
+		Workstation:               newNTLMVarField(&payloadOffset, 0),
+		EncryptedRandomSessionKey: newNTLMVarField(&payloadOffset, 0),
+	}
+	if unicode {
+		msg.NegotiateFlags = ntlmNegotiateUnicode
+	}
+
+	var b bytes.Buffer
+	_ = binary.Write(&b, binary.LittleEndian, &msg)
+	_, _ = b.Write(lmResponse)
+	_, _ = b.Write(ntResponse)
+	_, _ = b.Write(domainBytes)
+	_, _ = b.Write(userBytes)
+	return b.Bytes()
 }

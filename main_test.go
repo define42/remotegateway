@@ -1,11 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
+	"context"
+	"encoding/base64"
+	"errors"
 	"net/http"
+	"net/http/httptest"
+	"remotegateway/internal/ntlm"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRDPFileContentIncludesFullscreenAndGateway(t *testing.T) {
@@ -19,47 +23,6 @@ func TestRDPFileContentIncludesFullscreenAndGateway(t *testing.T) {
 	}
 	if !strings.Contains(content, "gatewayhostname:s:gw.example.com:8443\r\n") {
 		t.Fatalf("expected gateway hostname, got:\n%s", content)
-	}
-}
-
-func TestSplitAuthHeader(t *testing.T) {
-	scheme, token := splitAuthHeader("NTLM abc")
-	if scheme != "NTLM" || token != "abc" {
-		t.Fatalf("expected NTLM/abc, got %q/%q", scheme, token)
-	}
-
-	scheme, token = splitAuthHeader("Negotiate\t token")
-	if scheme != "Negotiate" || token != "token" {
-		t.Fatalf("expected Negotiate/token, got %q/%q", scheme, token)
-	}
-
-	scheme, token = splitAuthHeader("Negotiate")
-	if scheme != "Negotiate" || token != "" {
-		t.Fatalf("expected Negotiate with empty token, got %q/%q", scheme, token)
-	}
-}
-
-func TestExtractNTLMToken(t *testing.T) {
-	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
-	decoded, err := ExtractNTLMToken(token)
-	if err != nil {
-		t.Fatalf("expected direct token to parse: %v", err)
-	}
-	if !bytes.Equal(decoded, token) {
-		t.Fatalf("expected direct token to round-trip")
-	}
-
-	embedded := append([]byte{0x01, 0x02, 0x03}, token...)
-	decoded, err = ExtractNTLMToken(embedded)
-	if err != nil {
-		t.Fatalf("expected embedded token to parse: %v", err)
-	}
-	if !bytes.Equal(decoded, token) {
-		t.Fatalf("expected embedded token to match original")
-	}
-
-	if _, err := ExtractNTLMToken([]byte("not-ntlm")); err == nil {
-		t.Fatalf("expected error for missing NTLM signature")
 	}
 }
 
@@ -83,9 +46,187 @@ func TestGatewayHostFromRequest(t *testing.T) {
 	}
 }
 
-func buildTestNTLMToken(messageType uint32) []byte {
-	token := make([]byte, 12)
-	copy(token[:8], []byte(ntlmSignature))
-	binary.LittleEndian.PutUint32(token[8:12], messageType)
-	return token
+func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	baseURL := setupLDAPProxyServer(t, ctx)
+
+	loginClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	assertLoginSuccess(t, ctx, baseURL, loginClient, "testuser", "dogood")
+
+	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
+	key := ntlm.NtlmChallengeKey(req)
+	auth := &ntlm.StaticAuth{
+		Challenges: map[string]ntlm.NtlmChallengeState{
+			key: {
+				Challenge: challenge,
+				IssuedAt:  time.Now(),
+			},
+		},
+	}
+
+	domain := ""
+	ntResponse := ntlm.BuildTestNTLMv2Response(challenge, ntlm.StaticUser, domain, ntlm.StaticPassword)
+	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
+	req.Header.Set("Authorization", "NTLM "+base64.StdEncoding.EncodeToString(msg))
+
+	user, err := auth.Authenticate(req.Context(), req)
+	if err != nil {
+		t.Fatalf("expected NTLM authenticate to succeed: %v", err)
+	}
+	if user != ntlm.StaticUser {
+		t.Fatalf("expected user %q, got %q", ntlm.StaticUser, user)
+	}
+	if _, ok := auth.Challenges[key]; ok {
+		t.Fatalf("expected challenge to be consumed")
+	}
+}
+
+func TestBasicAuthMiddlewareMissingCredentials(t *testing.T) {
+	auth := &ntlm.StaticAuth{}
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+	})
+
+	rec := httptest.NewRecorder()
+	ntlm.BasicAuthMiddleware(auth, next).ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatalf("expected next handler not to be called")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	values := rec.Header().Values("WWW-Authenticate")
+	if len(values) != 1 || values[0] != `Basic realm="rdpgw"` {
+		t.Fatalf("expected Basic realm challenge, got %v", values)
+	}
+}
+
+func TestBasicAuthMiddlewareChallenge(t *testing.T) {
+	auth := &ntlm.StaticAuth{}
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.Header.Set("Authorization", "NTLM")
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+	})
+
+	rec := httptest.NewRecorder()
+	ntlm.BasicAuthMiddleware(auth, next).ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatalf("expected next handler not to be called")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	values := rec.Header().Values("WWW-Authenticate")
+	if len(values) != 2 {
+		t.Fatalf("expected two WWW-Authenticate headers, got %v", values)
+	}
+	hasNTLM := false
+	hasBasic := false
+	for _, v := range values {
+		if v == "NTLM" {
+			hasNTLM = true
+		}
+		if v == `Basic realm="rdpgw"` {
+			hasBasic = true
+		}
+	}
+	if !hasNTLM || !hasBasic {
+		t.Fatalf("expected NTLM and Basic challenges, got %v", values)
+	}
+}
+
+func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
+	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
+	key := ntlm.NtlmChallengeKey(req)
+	auth := &ntlm.StaticAuth{
+		Challenges: map[string]ntlm.NtlmChallengeState{
+			key: {
+				Challenge: challenge,
+				IssuedAt:  time.Now(),
+			},
+		},
+	}
+
+	domain := ""
+	ntResponse := ntlm.BuildTestNTLMv2Response(challenge, ntlm.StaticUser, domain, ntlm.StaticPassword)
+	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
+
+	user, err := auth.VerifyNTLMAuthenticate(req, msg, "NTLM")
+	if err != nil {
+		t.Fatalf("expected NTLM auth to succeed: %v", err)
+	}
+	if user != ntlm.StaticUser {
+		t.Fatalf("expected user %q, got %q", ntlm.StaticUser, user)
+	}
+}
+
+func TestVerifyNTLMAuthenticateMissingChallenge(t *testing.T) {
+	auth := &ntlm.StaticAuth{}
+	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
+	domain := ""
+	ntResponse := ntlm.BuildTestNTLMv2Response([]byte{1, 2, 3, 4, 5, 6, 7, 8}, ntlm.StaticUser, domain, ntlm.StaticPassword)
+	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
+	user, err := auth.VerifyNTLMAuthenticate(req, msg, "NTLM")
+	if err == nil {
+		t.Fatalf("expected challenge error for missing NTLM challenge")
+	}
+	if user != "" {
+		t.Fatalf("expected empty user on failure, got %q", user)
+	}
+	var challengeErr ntlm.AuthChallenge
+	if !errors.As(err, &challengeErr) {
+		t.Fatalf("expected auth challenge error, got %T", err)
+	}
+	if !strings.HasPrefix(challengeErr.Header, "NTLM ") {
+		t.Fatalf("expected NTLM challenge header, got %q", challengeErr.Header)
+	}
+}
+
+func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
+	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
+	key := ntlm.NtlmChallengeKey(req)
+	auth := &ntlm.StaticAuth{
+		Challenges: map[string]ntlm.NtlmChallengeState{
+			key: {
+				Challenge: challenge,
+				IssuedAt:  time.Now(),
+			},
+		},
+	}
+
+	domain := ""
+	ntResponse := ntlm.BuildTestNTLMv2Response(challenge, ntlm.StaticUser, domain, ntlm.StaticPassword)
+	ntResponse[0] ^= 0xFF
+	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
+
+	user, err := auth.VerifyNTLMAuthenticate(req, msg, "NTLM")
+	if err == nil {
+		t.Fatalf("expected NTLM auth failure for invalid response")
+	}
+	if user != "" {
+		t.Fatalf("expected empty user on failure, got %q", user)
+	}
+	var challengeErr ntlm.AuthChallenge
+	if !errors.As(err, &challengeErr) {
+		t.Fatalf("expected auth challenge error, got %T", err)
+	}
 }

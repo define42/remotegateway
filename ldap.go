@@ -3,15 +3,12 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"remotegateway/internal/ntlm"
+	"remotegateway/internal/types"
 	"strings"
 
 	"github.com/go-ldap/ldap/v3"
 )
-
-type User struct {
-	Name         string
-	NtlmPassword []byte
-}
 
 type LDAPConfig struct {
 	URL            string
@@ -22,7 +19,7 @@ type LDAPConfig struct {
 	SkipTLSVerify  bool
 }
 
-func ldapAuthenticateAccess(username, password string) (*User, error) {
+func ldapAuthenticateAccess(username, password string) (*types.User, error) {
 	conn, err := dialLDAP(ldapCfg)
 	if err != nil {
 		return nil, err
@@ -76,7 +73,7 @@ func ldapAuthenticateAccess(username, password string) (*User, error) {
 		return nil, fmt.Errorf("user %s not found", mail)
 	}
 
-	return &User{Name: username, NtlmPassword: NtlmV2Hash(password, username, "")}, nil
+	return &types.User{Name: username, NtlmPassword: ntlm.NtlmV2Hash(password, username, "")}, nil
 }
 
 func dialLDAP(cfg LDAPConfig) (*ldap.Conn, error) {

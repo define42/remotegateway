@@ -1,17 +1,39 @@
-package main
+package ntlm
 
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 )
 
+func TestExtractNTLMToken(t *testing.T) {
+	token := BuildTestNTLMToken(ntlmMessageTypeNegotiate)
+	decoded, err := ExtractNTLMToken(token)
+	if err != nil {
+		t.Fatalf("expected direct token to parse: %v", err)
+	}
+	if !bytes.Equal(decoded, token) {
+		t.Fatalf("expected direct token to round-trip")
+	}
+
+	embedded := append([]byte{0x01, 0x02, 0x03}, token...)
+	decoded, err = ExtractNTLMToken(embedded)
+	if err != nil {
+		t.Fatalf("expected embedded token to parse: %v", err)
+	}
+	if !bytes.Equal(decoded, token) {
+		t.Fatalf("expected embedded token to match original")
+	}
+
+	if _, err := ExtractNTLMToken([]byte("not-ntlm")); err == nil {
+		t.Fatalf("expected error for missing NTLM signature")
+	}
+}
+
 func TestNTLMMessageType(t *testing.T) {
-	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
+	token := BuildTestNTLMToken(ntlmMessageTypeNegotiate)
 	msgType, err := NtlmMessageType(token)
 	if err != nil {
 		t.Fatalf("expected message type: %v", err)
@@ -69,7 +91,7 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 	user := "User"
 	domain := "Domain"
 	ntResponse := bytes.Repeat([]byte{0xAA}, 16)
-	msg := buildTestNTLMAuthenticateMessage(user, domain, ntResponse, true)
+	msg := BuildTestNTLMAuthenticateMessage(user, domain, ntResponse, true)
 
 	parsed, err := ParseNTLMAuthenticateMessage(msg)
 	if err != nil {
@@ -85,7 +107,7 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 		t.Fatalf("expected NT response to match input")
 	}
 
-	shortResponseMsg := buildTestNTLMAuthenticateMessage(user, domain, []byte{0x01, 0x02}, true)
+	shortResponseMsg := BuildTestNTLMAuthenticateMessage(user, domain, []byte{0x01, 0x02}, true)
 	if _, err := ParseNTLMAuthenticateMessage(shortResponseMsg); err == nil {
 		t.Fatalf("expected error for short NT response")
 	}
@@ -184,10 +206,10 @@ func TestTakeNTLMChallenge(t *testing.T) {
 	key := NtlmChallengeKey(req)
 	original := []byte{9, 8, 7, 6, 5, 4, 3, 2}
 	auth := &StaticAuth{
-		challenges: map[string]ntlmChallengeState{
+		Challenges: map[string]NtlmChallengeState{
 			key: {
-				challenge: original,
-				issuedAt:  time.Now(),
+				Challenge: original,
+				IssuedAt:  time.Now(),
 			},
 		},
 	}
@@ -209,17 +231,17 @@ func TestTakeNTLMChallenge(t *testing.T) {
 	}
 
 	expiredAuth := &StaticAuth{
-		challenges: map[string]ntlmChallengeState{
+		Challenges: map[string]NtlmChallengeState{
 			key: {
-				challenge: original,
-				issuedAt:  time.Now().Add(-ntlmChallengeTTL - time.Second),
+				Challenge: original,
+				IssuedAt:  time.Now().Add(-ntlmChallengeTTL - time.Second),
 			},
 		},
 	}
 	if _, ok := expiredAuth.takeNTLMChallenge(req); ok {
 		t.Fatalf("expected expired challenge to be rejected")
 	}
-	if len(expiredAuth.challenges) != 0 {
+	if len(expiredAuth.Challenges) != 0 {
 		t.Fatalf("expected expired challenge to be pruned")
 	}
 
@@ -227,123 +249,4 @@ func TestTakeNTLMChallenge(t *testing.T) {
 	if _, ok := emptyAuth.takeNTLMChallenge(req); ok {
 		t.Fatalf("expected missing challenge to be rejected")
 	}
-}
-
-func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
-	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	key := NtlmChallengeKey(req)
-	auth := &StaticAuth{
-		challenges: map[string]ntlmChallengeState{
-			key: {
-				challenge: challenge,
-				issuedAt:  time.Now(),
-			},
-		},
-	}
-
-	domain := ""
-	ntResponse := buildTestNTLMv2Response(challenge, staticUser, domain, staticPassword)
-	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
-
-	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM")
-	if err != nil {
-		t.Fatalf("expected NTLM auth to succeed: %v", err)
-	}
-	if user != staticUser {
-		t.Fatalf("expected user %q, got %q", staticUser, user)
-	}
-}
-
-func TestVerifyNTLMAuthenticateMissingChallenge(t *testing.T) {
-	auth := &StaticAuth{}
-	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	domain := ""
-	ntResponse := buildTestNTLMv2Response([]byte{1, 2, 3, 4, 5, 6, 7, 8}, staticUser, domain, staticPassword)
-	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
-
-	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM")
-	if err == nil {
-		t.Fatalf("expected challenge error for missing NTLM challenge")
-	}
-	if user != "" {
-		t.Fatalf("expected empty user on failure, got %q", user)
-	}
-	var challengeErr authChallenge
-	if !errors.As(err, &challengeErr) {
-		t.Fatalf("expected auth challenge error, got %T", err)
-	}
-	if !strings.HasPrefix(challengeErr.header, "NTLM ") {
-		t.Fatalf("expected NTLM challenge header, got %q", challengeErr.header)
-	}
-}
-
-func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
-	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	key := NtlmChallengeKey(req)
-	auth := &StaticAuth{
-		challenges: map[string]ntlmChallengeState{
-			key: {
-				challenge: challenge,
-				issuedAt:  time.Now(),
-			},
-		},
-	}
-
-	domain := ""
-	ntResponse := buildTestNTLMv2Response(challenge, staticUser, domain, staticPassword)
-	ntResponse[0] ^= 0xFF
-	msg := buildTestNTLMAuthenticateMessage(staticUser, domain, ntResponse, true)
-
-	user, err := auth.verifyNTLMAuthenticate(req, msg, "NTLM")
-	if err == nil {
-		t.Fatalf("expected NTLM auth failure for invalid response")
-	}
-	if user != "" {
-		t.Fatalf("expected empty user on failure, got %q", user)
-	}
-	var challengeErr authChallenge
-	if !errors.As(err, &challengeErr) {
-		t.Fatalf("expected auth challenge error, got %T", err)
-	}
-}
-
-func buildTestNTLMv2Response(challenge []byte, user, domain, password string) []byte {
-	ntlmHash := NtlmV2Hash(password, user, domain)
-	temp := []byte{0x10, 0x20, 0x30, 0x40}
-	proof := hmacMD5(ntlmHash, challenge, temp)
-	return append(append([]byte(nil), proof...), temp...)
-}
-
-func buildTestNTLMAuthenticateMessage(user, domain string, ntResponse []byte, unicode bool) []byte {
-	lmResponse := []byte{0x01, 0x02, 0x03}
-	payloadOffset := 64
-	domainBytes := []byte(domain)
-	userBytes := []byte(user)
-	if unicode {
-		domainBytes = toUnicode(domain)
-		userBytes = toUnicode(user)
-	}
-
-	msg := ntlmAuthenticateMessageFields{
-		Header:                    newNTLMMessageHeader(ntlmMessageTypeAuthenticate),
-		LmChallengeResponse:       newNTLMVarField(&payloadOffset, len(lmResponse)),
-		NtChallengeResponse:       newNTLMVarField(&payloadOffset, len(ntResponse)),
-		DomainName:                newNTLMVarField(&payloadOffset, len(domainBytes)),
-		UserName:                  newNTLMVarField(&payloadOffset, len(userBytes)),
-		Workstation:               newNTLMVarField(&payloadOffset, 0),
-		EncryptedRandomSessionKey: newNTLMVarField(&payloadOffset, 0),
-	}
-	if unicode {
-		msg.NegotiateFlags = ntlmNegotiateUnicode
-	}
-
-	var b bytes.Buffer
-	_ = binary.Write(&b, binary.LittleEndian, &msg)
-	_, _ = b.Write(lmResponse)
-	_, _ = b.Write(ntResponse)
-	_, _ = b.Write(domainBytes)
-	_, _ = b.Write(userBytes)
-	return b.Bytes()
 }

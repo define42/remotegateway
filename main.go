@@ -20,8 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"remotegateway/internal/contextKey"
+	"remotegateway/internal/ntlm"
 	"remotegateway/internal/rdpgw/common"
 	"remotegateway/internal/rdpgw/protocol"
+	"remotegateway/internal/session"
 	"remotegateway/internal/virt"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -35,79 +38,6 @@ import (
    Gateway auth helpers
    ---------------------------
 */
-
-type contextKey string
-
-const authUserKey contextKey = "authUser"
-
-func normalizeUser(user string) string {
-	user = strings.TrimSpace(user)
-	if user == "" {
-		return ""
-	}
-	if idx := strings.LastIndex(user, "\\"); idx >= 0 {
-		user = user[idx+1:]
-	}
-	if idx := strings.Index(user, "@"); idx > 0 {
-		user = user[:idx]
-	}
-	return user
-}
-
-func withAuthUser(ctx context.Context, user string) context.Context {
-	return context.WithValue(ctx, authUserKey, user)
-}
-
-func authUserFromContext(ctx context.Context) (string, bool) {
-	user, ok := ctx.Value(authUserKey).(string)
-	if !ok || user == "" {
-		return "", false
-	}
-	return user, true
-}
-
-func basicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		fmt.Println("Basic auth middleware called")
-		user, err := authenticator.Authenticate(r.Context(), r)
-		if err != nil {
-			var challenge authChallenge
-			if errors.As(err, &challenge) {
-				w.Header().Add("WWW-Authenticate", challenge.header)
-				w.Header().Add("WWW-Authenticate", `Basic realm="rdpgw"`)
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			log.Printf(
-				"Gateway auth failed: remote=%s client_ip=%s method=%s path=%s conn_id=%s err=%v",
-				r.RemoteAddr,
-				common.GetClientIp(r.Context()),
-				r.Method,
-				r.URL.Path,
-				r.Header.Get("Rdg-Connection-Id"),
-				err,
-			)
-			w.Header().Set("WWW-Authenticate", `Basic realm="rdpgw"`)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		ctx := withAuthUser(r.Context(), user)
-		log.Printf(
-			"Gateway connect: user=%s remote=%s client_ip=%s method=%s path=%s conn_id=%s ua=%q",
-			user,
-			r.RemoteAddr,
-			common.GetClientIp(r.Context()),
-			r.Method,
-			r.URL.Path,
-			r.Header.Get("Rdg-Connection-Id"),
-			r.UserAgent(),
-		)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
 
 type responseRecorder struct {
 	http.ResponseWriter
@@ -178,7 +108,7 @@ var getIPOfVm = virt.GetIpOfVm
 
 func converToInternServer(ctx context.Context, host string) (string, error) {
 
-	user, ok := authUserFromContext(ctx)
+	user, ok := contextKey.AuthUserFromContext(ctx)
 	if !ok {
 		log.Printf("missing auth user for server policy")
 		return "", fmt.Errorf("missing auth user")
@@ -285,7 +215,7 @@ func gatewayRouter() http.Handler {
 	}
 
 	var gatewayHandler http.Handler = http.HandlerFunc(gw.HandleGatewayProtocol)
-	gatewayHandler = basicAuthMiddleware(&StaticAuth{}, gatewayHandler)
+	gatewayHandler = ntlm.BasicAuthMiddleware(&ntlm.StaticAuth{}, gatewayHandler)
 	gatewayHandler = common.EnrichContext(gatewayHandler)
 	return gatewayHandler
 }
@@ -293,7 +223,7 @@ func gatewayRouter() http.Handler {
 func getRemoteGatewayRotuer() http.Handler {
 
 	router := chi.NewRouter()
-	router.Use(sessionManager.LoadAndSave)
+	router.Use(session.SessionManager.LoadAndSave)
 
 	router.Handle("/static/*", http.FileServer(http.FS(staticFiles)))
 	router.Post("/login", handleLoginPost)
@@ -335,7 +265,7 @@ func getRemoteGatewayRotuer() http.Handler {
 
 func registerAPI(api huma.API) {
 	group := huma.NewGroup(api, "/api")
-	group.UseMiddleware(sessionMiddleware())
+	group.UseMiddleware(session.SessionMiddleware())
 	huma.Get(group, "/rdpgw.rdp", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
@@ -414,7 +344,7 @@ func registerAPI(api huma.API) {
 					return
 				}
 
-				if err := virt.BootNewVM(name, staticUser, staticPassword); err != nil {
+				if err := virt.BootNewVM(name, "testuser", "dogood"); err != nil {
 					log.Printf("boot new vm %q failed: %v", name, err)
 					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
 						OK:    false,

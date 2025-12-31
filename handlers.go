@@ -5,6 +5,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"remotegateway/internal/session"
 	"strings"
 )
 
@@ -48,7 +49,7 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := createSession(r.Context(), user); err != nil {
+	if err := session.CreateSession(r.Context(), user); err != nil {
 		log.Printf("session create failed for %s: %v", username, err)
 		serveLogin(w, "Login failed.")
 		return
@@ -77,7 +78,7 @@ func handleLoginGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
-	if err := destroySession(r.Context()); err != nil {
+	if err := session.DestroySession(r.Context()); err != nil {
 		log.Printf("session destroy failed: %v", err)
 	}
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
