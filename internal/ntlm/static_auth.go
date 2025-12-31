@@ -57,13 +57,13 @@ func (a *StaticAuth) Authenticate(
 			}
 			ntlmToken := decoded
 			if canonicalScheme == "Negotiate" {
-				ntlmToken, err = ExtractNTLMToken(decoded)
+				ntlmToken, err = extractNTLMToken(decoded)
 				if err != nil {
 					log.Printf("Negotiate token missing NTLM for %s: %v", r.RemoteAddr, err)
 					return "", AuthChallenge{Header: canonicalScheme}
 				}
 			}
-			msgType, err := NtlmMessageType(ntlmToken)
+			msgType, err := ntlmMessageType(ntlmToken)
 			if err != nil {
 				log.Printf("Invalid NTLM message from %s: %v", r.RemoteAddr, err)
 				return "", AuthChallenge{Header: canonicalScheme}
@@ -121,7 +121,7 @@ func (a *StaticAuth) issueNTLMChallenge(r *http.Request) (string, error) {
 	if _, err := rand.Read(serverChallenge); err != nil {
 		return "", err
 	}
-	msg, err := BuildNTLMChallengeMessage(serverChallenge, ntlmTargetName)
+	msg, err := buildNTLMChallengeMessage(serverChallenge, ntlmTargetName)
 	if err != nil {
 		return "", err
 	}
@@ -174,7 +174,7 @@ func (a *StaticAuth) takeNTLMChallenge(r *http.Request) ([]byte, bool) {
 }
 
 func (a *StaticAuth) VerifyNTLMAuthenticate(r *http.Request, data []byte, scheme string) (string, error) {
-	msg, err := ParseNTLMAuthenticateMessage(data)
+	msg, err := parseNTLMAuthenticateMessage(data)
 	if err != nil {
 		log.Printf("Invalid NTLM authenticate message from %s: %v", r.RemoteAddr, err)
 		return "", a.ntlmChallengeError(r, scheme)
@@ -191,7 +191,7 @@ func (a *StaticAuth) VerifyNTLMAuthenticate(r *http.Request, data []byte, scheme
 		return "", a.ntlmChallengeError(r, scheme)
 	}
 
-	if !VerifyNTLMv2Response(challenge, userLdap.User.NtlmPassword, msg.NtChallengeResponse) {
+	if !verifyNTLMv2Response(challenge, userLdap.User.NtlmPassword, msg.NtChallengeResponse) {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
 		return "", a.ntlmChallengeError(r, scheme)
 	}

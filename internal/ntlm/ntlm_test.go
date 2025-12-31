@@ -9,8 +9,8 @@ import (
 )
 
 func TestExtractNTLMToken(t *testing.T) {
-	token := BuildTestNTLMToken(ntlmMessageTypeNegotiate)
-	decoded, err := ExtractNTLMToken(token)
+	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
+	decoded, err := extractNTLMToken(token)
 	if err != nil {
 		t.Fatalf("expected direct token to parse: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestExtractNTLMToken(t *testing.T) {
 	}
 
 	embedded := append([]byte{0x01, 0x02, 0x03}, token...)
-	decoded, err = ExtractNTLMToken(embedded)
+	decoded, err = extractNTLMToken(embedded)
 	if err != nil {
 		t.Fatalf("expected embedded token to parse: %v", err)
 	}
@@ -27,14 +27,14 @@ func TestExtractNTLMToken(t *testing.T) {
 		t.Fatalf("expected embedded token to match original")
 	}
 
-	if _, err := ExtractNTLMToken([]byte("not-ntlm")); err == nil {
+	if _, err := extractNTLMToken([]byte("not-ntlm")); err == nil {
 		t.Fatalf("expected error for missing NTLM signature")
 	}
 }
 
 func TestNTLMMessageType(t *testing.T) {
-	token := BuildTestNTLMToken(ntlmMessageTypeNegotiate)
-	msgType, err := NtlmMessageType(token)
+	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
+	msgType, err := ntlmMessageType(token)
 	if err != nil {
 		t.Fatalf("expected message type: %v", err)
 	}
@@ -42,13 +42,13 @@ func TestNTLMMessageType(t *testing.T) {
 		t.Fatalf("expected message type %d, got %d", ntlmMessageTypeNegotiate, msgType)
 	}
 
-	if _, err := NtlmMessageType(token[:10]); err == nil {
+	if _, err := ntlmMessageType(token[:10]); err == nil {
 		t.Fatalf("expected error for short message")
 	}
 
 	bad := append([]byte(nil), token...)
 	bad[0] = 0
-	if _, err := NtlmMessageType(bad); err == nil {
+	if _, err := ntlmMessageType(bad); err == nil {
 		t.Fatalf("expected error for invalid signature")
 	}
 }
@@ -56,7 +56,7 @@ func TestNTLMMessageType(t *testing.T) {
 func TestNTLMVarFieldReadStringFrom(t *testing.T) {
 	buf := []byte{0, 0, 0, 0, 'a', 'b', 'c'}
 	field := ntlmVarField{Len: 3, MaxLen: 3, BufferOffset: 4}
-	got, err := field.ReadStringFrom(buf, false)
+	got, err := field.readStringFrom(buf, false)
 	if err != nil {
 		t.Fatalf("expected string read: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestNTLMVarFieldReadStringFrom(t *testing.T) {
 	unicode := toUnicode("bob")
 	buf = append(make([]byte, 2), unicode...)
 	field = ntlmVarField{Len: uint16(len(unicode)), MaxLen: uint16(len(unicode)), BufferOffset: 2}
-	got, err = field.ReadStringFrom(buf, true)
+	got, err = field.readStringFrom(buf, true)
 	if err != nil {
 		t.Fatalf("expected unicode string read: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestNTLMVarFieldReadStringFrom(t *testing.T) {
 	}
 
 	badField := ntlmVarField{Len: 4, MaxLen: 4, BufferOffset: 5}
-	if _, err := badField.ReadFrom([]byte("short")); err == nil {
+	if _, err := badField.readFrom([]byte("short")); err == nil {
 		t.Fatalf("expected error for out-of-bounds var field")
 	}
 }
@@ -93,7 +93,7 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 	ntResponse := bytes.Repeat([]byte{0xAA}, 16)
 	msg := BuildTestNTLMAuthenticateMessage(user, domain, ntResponse, true)
 
-	parsed, err := ParseNTLMAuthenticateMessage(msg)
+	parsed, err := parseNTLMAuthenticateMessage(msg)
 	if err != nil {
 		t.Fatalf("expected parse to succeed: %v", err)
 	}
@@ -108,20 +108,20 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 	}
 
 	shortResponseMsg := BuildTestNTLMAuthenticateMessage(user, domain, []byte{0x01, 0x02}, true)
-	if _, err := ParseNTLMAuthenticateMessage(shortResponseMsg); err == nil {
+	if _, err := parseNTLMAuthenticateMessage(shortResponseMsg); err == nil {
 		t.Fatalf("expected error for short NT response")
 	}
 
 	invalidHeader := append([]byte(nil), msg...)
 	invalidHeader[0] = 0
-	if _, err := ParseNTLMAuthenticateMessage(invalidHeader); err == nil {
+	if _, err := parseNTLMAuthenticateMessage(invalidHeader); err == nil {
 		t.Fatalf("expected error for invalid header")
 	}
 }
 
 func TestBuildNTLMChallengeMessage(t *testing.T) {
 	challenge := []byte{0, 1, 2, 3, 4, 5, 6, 7}
-	msg, err := BuildNTLMChallengeMessage(challenge, ntlmTargetName)
+	msg, err := buildNTLMChallengeMessage(challenge, ntlmTargetName)
 	if err != nil {
 		t.Fatalf("expected build to succeed: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 		t.Fatalf("expected valid challenge header")
 	}
 
-	target, err := fields.TargetName.ReadStringFrom(msg, true)
+	target, err := fields.TargetName.readStringFrom(msg, true)
 	if err != nil {
 		t.Fatalf("expected target name: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 		t.Fatalf("expected target %q, got %q", ntlmTargetName, target)
 	}
 
-	targetInfo, err := fields.TargetInfo.ReadFrom(msg)
+	targetInfo, err := fields.TargetInfo.readFrom(msg)
 	if err != nil {
 		t.Fatalf("expected target info: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 		t.Fatalf("expected EOL length 0, got %d", got)
 	}
 
-	if _, err := BuildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName); err == nil {
+	if _, err := buildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName); err == nil {
 		t.Fatalf("expected error for invalid challenge length")
 	}
 }
@@ -175,13 +175,13 @@ func TestVerifyNTLMv2Response(t *testing.T) {
 	proof := hmacMD5(ntlmHash, serverChallenge, temp)
 	ntResponse := append(append([]byte(nil), proof...), temp...)
 
-	if !VerifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse) {
+	if !verifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse) {
 		t.Fatalf("expected NTLMv2 response to verify")
 	}
-	if VerifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse[:10]) {
+	if verifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse[:10]) {
 		t.Fatalf("expected short response to fail verification")
 	}
-	if VerifyNTLMv2Response(serverChallenge[:7], ntlmHash, ntResponse) {
+	if verifyNTLMv2Response(serverChallenge[:7], ntlmHash, ntResponse) {
 		t.Fatalf("expected short challenge to fail verification")
 	}
 }

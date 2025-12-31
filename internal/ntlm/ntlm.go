@@ -52,7 +52,7 @@ func NtlmChallengeKey(r *http.Request) string {
 	return "remote:" + r.RemoteAddr
 }
 
-func NtlmMessageType(data []byte) (uint32, error) {
+func ntlmMessageType(data []byte) (uint32, error) {
 	if len(data) < 12 {
 		return 0, errors.New("NTLM message too short")
 	}
@@ -62,7 +62,7 @@ func NtlmMessageType(data []byte) (uint32, error) {
 	return binary.LittleEndian.Uint32(data[8:12]), nil
 }
 
-func ExtractNTLMToken(data []byte) ([]byte, error) {
+func extractNTLMToken(data []byte) ([]byte, error) {
 	if len(data) >= 12 && bytes.Equal(data[:8], []byte(ntlmSignature)) {
 		return data, nil
 	}
@@ -71,7 +71,7 @@ func ExtractNTLMToken(data []byte) ([]byte, error) {
 		return nil, errors.New("NTLM signature not found")
 	}
 	token := data[idx:]
-	if _, err := NtlmMessageType(token); err != nil {
+	if _, err := ntlmMessageType(token); err != nil {
 		return nil, err
 	}
 	return token, nil
@@ -99,15 +99,15 @@ type ntlmVarField struct {
 	BufferOffset uint32
 }
 
-func (f ntlmVarField) ReadFrom(buffer []byte) ([]byte, error) {
+func (f ntlmVarField) readFrom(buffer []byte) ([]byte, error) {
 	if len(buffer) < int(f.BufferOffset+uint32(f.Len)) {
 		return nil, errors.New("NTLM var field exceeds buffer")
 	}
 	return buffer[f.BufferOffset : f.BufferOffset+uint32(f.Len)], nil
 }
 
-func (f ntlmVarField) ReadStringFrom(buffer []byte, unicode bool) (string, error) {
-	d, err := f.ReadFrom(buffer)
+func (f ntlmVarField) readStringFrom(buffer []byte, unicode bool) (string, error) {
+	d, err := f.readFrom(buffer)
 	if err != nil {
 		return "", err
 	}
@@ -164,7 +164,7 @@ type ntlmAuthenticateMessage struct {
 	NegotiateFlags      uint32
 }
 
-func ParseNTLMAuthenticateMessage(data []byte) (*ntlmAuthenticateMessage, error) {
+func parseNTLMAuthenticateMessage(data []byte) (*ntlmAuthenticateMessage, error) {
 	if len(data) < 64 {
 		return nil, errors.New("NTLM authenticate message too short")
 	}
@@ -176,19 +176,19 @@ func ParseNTLMAuthenticateMessage(data []byte) (*ntlmAuthenticateMessage, error)
 		return nil, errors.New("invalid NTLM authenticate message")
 	}
 	unicode := fields.NegotiateFlags&ntlmNegotiateUnicode != 0
-	domain, err := fields.DomainName.ReadStringFrom(data, unicode)
+	domain, err := fields.DomainName.readStringFrom(data, unicode)
 	if err != nil {
 		return nil, err
 	}
-	user, err := fields.UserName.ReadStringFrom(data, unicode)
+	user, err := fields.UserName.readStringFrom(data, unicode)
 	if err != nil {
 		return nil, err
 	}
-	lmResponse, err := fields.LmChallengeResponse.ReadFrom(data)
+	lmResponse, err := fields.LmChallengeResponse.readFrom(data)
 	if err != nil {
 		return nil, err
 	}
-	ntResponse, err := fields.NtChallengeResponse.ReadFrom(data)
+	ntResponse, err := fields.NtChallengeResponse.readFrom(data)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ type ntlmChallengeMessageFields struct {
 	TargetInfo      ntlmVarField
 }
 
-func BuildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byte, error) {
+func buildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byte, error) {
 	if len(serverChallenge) != 8 {
 		return nil, errors.New("invalid NTLM challenge length")
 	}
@@ -266,7 +266,7 @@ func ntlmHash(password string) []byte {
 	return hash.Sum(nil)
 }
 
-func VerifyNTLMv2Response(serverChallenge, ntlmV2Hash, ntResponse []byte) bool {
+func verifyNTLMv2Response(serverChallenge, ntlmV2Hash, ntResponse []byte) bool {
 	if len(serverChallenge) != 8 || len(ntResponse) < 16 {
 		return false
 	}
@@ -284,7 +284,7 @@ func hmacMD5(key []byte, data ...[]byte) []byte {
 	return mac.Sum(nil)
 }
 
-func BuildTestNTLMToken(messageType uint32) []byte {
+func buildTestNTLMToken(messageType uint32) []byte {
 	token := make([]byte, 12)
 	copy(token[:8], []byte(ntlmSignature))
 	binary.LittleEndian.PutUint32(token[8:12], messageType)

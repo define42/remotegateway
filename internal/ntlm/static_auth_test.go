@@ -28,7 +28,7 @@ func TestSplitAuthHeader(t *testing.T) {
 func TestAuthenticateNTLMNegotiateChallenge(t *testing.T) {
 	auth := &StaticAuth{}
 	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
-	token := BuildTestNTLMToken(ntlmMessageTypeNegotiate)
+	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
 	req.Header.Set("Authorization", "NTLM "+base64.StdEncoding.EncodeToString(token))
 
 	user, err := auth.Authenticate(req.Context(), req)
@@ -50,7 +50,7 @@ func TestAuthenticateNTLMNegotiateChallenge(t *testing.T) {
 func TestAuthenticateNegotiateChallenge(t *testing.T) {
 	auth := &StaticAuth{}
 	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
-	token := BuildTestNTLMToken(ntlmMessageTypeNegotiate)
+	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
 	req.Header.Set("Authorization", "Negotiate "+base64.StdEncoding.EncodeToString(token))
 
 	user, err := auth.Authenticate(req.Context(), req)
