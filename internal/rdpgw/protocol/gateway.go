@@ -17,10 +17,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+type contextKey string
+
 const (
 	rdgConnectionIdKey = "Rdg-Connection-Id"
 	MethodRDGIN        = "RDG_IN_DATA"
 	MethodRDGOUT       = "RDG_OUT_DATA"
+	sessionInfoCtxKey  contextKey = "SessionInfo"
 )
 
 var (
@@ -71,7 +74,7 @@ func (g *Gateway) HandleGatewayProtocol(w http.ResponseWriter, r *http.Request) 
 	} else {
 		s = x.(*SessionInfo)
 	}
-	ctx := context.WithValue(r.Context(), "SessionInfo", s)
+	ctx := context.WithValue(r.Context(), sessionInfoCtxKey, s)
 
 	switch r.Method {
 
