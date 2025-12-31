@@ -3,20 +3,17 @@ package ntlm
 import (
 	"bytes"
 	"crypto/hmac"
-	"crypto/md5"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"remotegateway/internal/contextKey"
+	"remotegateway/internal/hash"
 	"remotegateway/internal/rdpgw/common"
+	"remotegateway/internal/rdpgw/protocol"
 	"strings"
 	"time"
-	"unicode/utf16"
-
-	//nolint:staticcheck // MD4 is required for NTLM compatibility
-	"golang.org/x/crypto/md4"
 )
 
 const (
@@ -112,7 +109,7 @@ func (f ntlmVarField) readStringFrom(buffer []byte, unicode bool) (string, error
 		return "", err
 	}
 	if unicode {
-		return fromUnicode(d)
+		return protocol.DecodeUTF16(d)
 	}
 	return string(d), nil
 }
@@ -125,24 +122,6 @@ func newNTLMVarField(ptr *int, fieldsize int) ntlmVarField {
 	}
 	*ptr += fieldsize
 	return f
-}
-
-func fromUnicode(d []byte) (string, error) {
-	if len(d)%2 != 0 {
-		return "", errors.New("invalid UTF-16LE length")
-	}
-	s := make([]uint16, len(d)/2)
-	if err := binary.Read(bytes.NewReader(d), binary.LittleEndian, &s); err != nil {
-		return "", err
-	}
-	return string(utf16.Decode(s)), nil
-}
-
-func toUnicode(s string) []byte {
-	uints := utf16.Encode([]rune(s))
-	var b bytes.Buffer
-	_ = binary.Write(&b, binary.LittleEndian, &uints)
-	return b.Bytes()
 }
 
 type ntlmAuthenticateMessageFields struct {
@@ -218,7 +197,7 @@ func buildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byt
 		return nil, errors.New("invalid NTLM challenge length")
 	}
 	payloadOffset := 48
-	targetNameBytes := toUnicode(targetName)
+	targetNameBytes := protocol.EncodeUTF16(targetName)
 	targetInfoBytes := buildNTLMTargetInfo(time.Now())
 	msg := ntlmChallengeMessageFields{
 		Header:         newNTLMMessageHeader(ntlmMessageTypeChallenge),
@@ -256,32 +235,14 @@ func buildNTLMTargetInfo(now time.Time) []byte {
 	return b.Bytes()
 }
 
-func NtlmV2Hash(password, username, domain string) []byte {
-	return hmacMD5(ntlmHash(password), toUnicode(strings.ToUpper(username)+domain))
-}
-
-func ntlmHash(password string) []byte {
-	hash := md4.New()
-	_, _ = hash.Write(toUnicode(password))
-	return hash.Sum(nil)
-}
-
 func verifyNTLMv2Response(serverChallenge, ntlmV2Hash, ntResponse []byte) bool {
 	if len(serverChallenge) != 8 || len(ntResponse) < 16 {
 		return false
 	}
 	proof := ntResponse[:16]
 	temp := ntResponse[16:]
-	expected := hmacMD5(ntlmV2Hash, serverChallenge, temp)
+	expected := hash.HmacMD5(ntlmV2Hash, serverChallenge, temp)
 	return hmac.Equal(expected, proof)
-}
-
-func hmacMD5(key []byte, data ...[]byte) []byte {
-	mac := hmac.New(md5.New, key)
-	for _, d := range data {
-		_, _ = mac.Write(d)
-	}
-	return mac.Sum(nil)
 }
 
 func buildTestNTLMToken(messageType uint32) []byte {
@@ -335,9 +296,9 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 }
 
 func BuildTestNTLMv2Response(challenge []byte, user, domain, password string) []byte {
-	ntlmHash := NtlmV2Hash(password, user, domain)
+	ntlmHash := hash.NtlmV2Hash(password, user, domain)
 	temp := []byte{0x10, 0x20, 0x30, 0x40}
-	proof := hmacMD5(ntlmHash, challenge, temp)
+	proof := hash.HmacMD5(ntlmHash, challenge, temp)
 	return append(append([]byte(nil), proof...), temp...)
 }
 
@@ -347,8 +308,8 @@ func BuildTestNTLMAuthenticateMessage(user, domain string, ntResponse []byte, un
 	domainBytes := []byte(domain)
 	userBytes := []byte(user)
 	if unicode {
-		domainBytes = toUnicode(domain)
-		userBytes = toUnicode(user)
+		domainBytes = protocol.EncodeUTF16(domain)
+		userBytes = protocol.EncodeUTF16(user)
 	}
 
 	msg := ntlmAuthenticateMessageFields{

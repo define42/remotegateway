@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"net/http"
+	"remotegateway/internal/hash"
+	"remotegateway/internal/rdpgw/protocol"
 	"testing"
 	"time"
 )
@@ -64,7 +66,7 @@ func TestNTLMVarFieldReadStringFrom(t *testing.T) {
 		t.Fatalf("expected abc, got %q", got)
 	}
 
-	unicode := toUnicode("bob")
+	unicode := protocol.EncodeUTF16("bob")
 	buf = append(make([]byte, 2), unicode...)
 	field = ntlmVarField{Len: uint16(len(unicode)), MaxLen: uint16(len(unicode)), BufferOffset: 2}
 	got, err = field.readStringFrom(buf, true)
@@ -82,7 +84,7 @@ func TestNTLMVarFieldReadStringFrom(t *testing.T) {
 }
 
 func TestFromUnicodeOddLength(t *testing.T) {
-	if _, err := fromUnicode([]byte{0x00}); err == nil {
+	if _, err := protocol.DecodeUTF16([]byte{0x00}); err == nil {
 		t.Fatalf("expected error for odd-length UTF-16 data")
 	}
 }
@@ -170,9 +172,9 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 
 func TestVerifyNTLMv2Response(t *testing.T) {
 	serverChallenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	ntlmHash := NtlmV2Hash("password", "User", "Domain")
+	ntlmHash := hash.NtlmV2Hash("password", "User", "Domain")
 	temp := []byte{0x10, 0x20, 0x30, 0x40}
-	proof := hmacMD5(ntlmHash, serverChallenge, temp)
+	proof := hash.HmacMD5(ntlmHash, serverChallenge, temp)
 	ntResponse := append(append([]byte(nil), proof...), temp...)
 
 	if !verifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse) {

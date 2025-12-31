@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"remotegateway/internal/config"
-	"remotegateway/internal/ntlm"
+	"remotegateway/internal/hash"
 	"remotegateway/internal/types"
 	"strings"
 
@@ -65,7 +65,7 @@ func LdapAuthenticateAccess(username, password string) (*types.User, error) {
 		return nil, fmt.Errorf("user %s not found", mail)
 	}
 
-	return &types.User{Name: username, NtlmPassword: ntlm.NtlmV2Hash(password, username, "")}, nil
+	return &types.User{Name: username, NtlmPassword: hash.NtlmV2Hash(password, username, "")}, nil
 }
 
 func dialLDAP(cfg config.LDAPConfig) (*ldap.Conn, error) {
