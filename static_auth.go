@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 /*
@@ -100,4 +102,97 @@ func canonicalAuthScheme(scheme string) string {
 		return "Negotiate"
 	}
 	return "NTLM"
+}
+
+func (a *StaticAuth) ntlmChallengeError(r *http.Request, scheme string) error {
+	challenge, err := a.issueNTLMChallenge(r)
+	if err != nil {
+		return err
+	}
+	if scheme == "" {
+		scheme = "NTLM"
+	}
+	return authChallenge{header: scheme + " " + challenge}
+}
+
+func (a *StaticAuth) issueNTLMChallenge(r *http.Request) (string, error) {
+	serverChallenge := make([]byte, 8)
+	if _, err := rand.Read(serverChallenge); err != nil {
+		return "", err
+	}
+	msg, err := buildNTLMChallengeMessage(serverChallenge, ntlmTargetName)
+	if err != nil {
+		return "", err
+	}
+	key := ntlmChallengeKey(r)
+	now := time.Now()
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.challenges == nil {
+		a.challenges = make(map[string]ntlmChallengeState)
+	}
+	a.pruneNTLMChallengesLocked(now)
+	challengeCopy := make([]byte, len(serverChallenge))
+	copy(challengeCopy, serverChallenge)
+	a.challenges[key] = ntlmChallengeState{challenge: challengeCopy, issuedAt: now}
+
+	return base64.StdEncoding.EncodeToString(msg), nil
+}
+
+func (a *StaticAuth) pruneNTLMChallengesLocked(now time.Time) {
+	for key, state := range a.challenges {
+		if now.Sub(state.issuedAt) > ntlmChallengeTTL {
+			delete(a.challenges, key)
+		}
+	}
+}
+
+func (a *StaticAuth) takeNTLMChallenge(r *http.Request) ([]byte, bool) {
+	key := ntlmChallengeKey(r)
+	now := time.Now()
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.challenges == nil {
+		return nil, false
+	}
+	state, ok := a.challenges[key]
+	if !ok {
+		return nil, false
+	}
+	delete(a.challenges, key)
+	if now.Sub(state.issuedAt) > ntlmChallengeTTL {
+		return nil, false
+	}
+	challengeCopy := make([]byte, len(state.challenge))
+	copy(challengeCopy, state.challenge)
+	return challengeCopy, true
+}
+
+func (a *StaticAuth) verifyNTLMAuthenticate(r *http.Request, data []byte, scheme string) (string, error) {
+	msg, err := parseNTLMAuthenticateMessage(data)
+	if err != nil {
+		log.Printf("Invalid NTLM authenticate message from %s: %v", r.RemoteAddr, err)
+		return "", a.ntlmChallengeError(r, scheme)
+	}
+	challenge, ok := a.takeNTLMChallenge(r)
+	if !ok {
+		log.Printf("Missing NTLM challenge for %s", ntlmChallengeKey(r))
+		return "", a.ntlmChallengeError(r, scheme)
+	}
+
+	userLdap, ok := getSessionFromUserName(msg.UserName)
+	if !ok {
+		log.Printf("NTLM auth failed, user %q not found", msg.UserName)
+		return "", a.ntlmChallengeError(r, scheme)
+	}
+
+	if !verifyNTLMv2Response(challenge, userLdap.User.NtlmPassword, msg.NtChallengeResponse) {
+		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
+		return "", a.ntlmChallengeError(r, scheme)
+	}
+	return msg.UserName, nil
 }
