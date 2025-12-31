@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"remotegateway/internal/ntlm"
+	"remotegateway/internal/session"
+	"remotegateway/internal/types"
 	"strings"
 	"testing"
 	"time"
@@ -46,12 +48,30 @@ func TestGatewayHostFromRequest(t *testing.T) {
 	}
 }
 
+func seedSession(t *testing.T, sessionManager *session.Manager, username, password, domain string) {
+	t.Helper()
+	user, err := types.NewUser(username, password, domain)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	ctx, err := sessionManager.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	if err := sessionManager.CreateSession(ctx, user); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, _, err := sessionManager.Commit(ctx); err != nil {
+		t.Fatalf("commit session: %v", err)
+	}
+}
+
 func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	baseURL := setupLDAPProxyServer(t, ctx)
+	baseURL, sessionManager := setupLDAPProxyServer(t, ctx)
 
 	loginClient := &http.Client{
 		Timeout: 10 * time.Second,
@@ -59,7 +79,7 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 			return http.ErrUseLastResponse
 		},
 	}
-	assertLoginSuccess(t, ctx, baseURL, loginClient, "testuser", "dogood")
+	sessionCookie := loginAndGetSessionCookie(t, ctx, baseURL, loginClient, "testuser", "dogood")
 
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
@@ -71,6 +91,7 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 				IssuedAt:  time.Now(),
 			},
 		},
+		SessionManager: sessionManager,
 	}
 
 	domain := ""
@@ -87,6 +108,12 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 	}
 	if _, ok := auth.Challenges[key]; ok {
 		t.Fatalf("expected challenge to be consumed")
+	}
+
+	assertLogoutSuccess(t, ctx, baseURL, loginClient, sessionCookie)
+
+	if _, found := sessionManager.GetSessionFromUserName("testuser"); found {
+		t.Fatalf("expected session for user testuser to be destroyed")
 	}
 }
 
@@ -153,9 +180,12 @@ func TestBasicAuthMiddlewareChallenge(t *testing.T) {
 }
 
 func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
+	sessionManager := session.NewManager()
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
 	key := ntlm.NtlmChallengeKey(req)
+	domain := ""
+	seedSession(t, sessionManager, ntlm.StaticUser, ntlm.StaticPassword, domain)
 	auth := &ntlm.StaticAuth{
 		Challenges: map[string]ntlm.NtlmChallengeState{
 			key: {
@@ -163,9 +193,9 @@ func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 				IssuedAt:  time.Now(),
 			},
 		},
+		SessionManager: sessionManager,
 	}
 
-	domain := ""
 	ntResponse := ntlm.BuildTestNTLMv2Response(challenge, ntlm.StaticUser, domain, ntlm.StaticPassword)
 	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
 
@@ -201,9 +231,12 @@ func TestVerifyNTLMAuthenticateMissingChallenge(t *testing.T) {
 }
 
 func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
+	sessionManager := session.NewManager()
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
 	key := ntlm.NtlmChallengeKey(req)
+	domain := ""
+	seedSession(t, sessionManager, ntlm.StaticUser, ntlm.StaticPassword, domain)
 	auth := &ntlm.StaticAuth{
 		Challenges: map[string]ntlm.NtlmChallengeState{
 			key: {
@@ -211,9 +244,9 @@ func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
 				IssuedAt:  time.Now(),
 			},
 		},
+		SessionManager: sessionManager,
 	}
 
-	domain := ""
 	ntResponse := ntlm.BuildTestNTLMv2Response(challenge, ntlm.StaticUser, domain, ntlm.StaticPassword)
 	ntResponse[0] ^= 0xFF
 	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)

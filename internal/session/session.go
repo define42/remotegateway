@@ -20,13 +20,19 @@ type sessionData struct {
 
 const sessionKey = "session"
 
-var SessionManager = newSessionManager()
-
 func init() {
 	gob.Register(sessionData{})
 }
 
 const sessionTTL = 30 * time.Minute
+
+type Manager struct {
+	*scs.SessionManager
+}
+
+func NewManager() *Manager {
+	return &Manager{SessionManager: newSessionManager()}
+}
 
 func newSessionManager() *scs.SessionManager {
 	manager := scs.New()
@@ -40,30 +46,30 @@ func newSessionManager() *scs.SessionManager {
 	return manager
 }
 
-func CreateSession(ctx context.Context, u *types.User) error {
-	if err := SessionManager.RenewToken(ctx); err != nil {
+func (m *Manager) CreateSession(ctx context.Context, u *types.User) error {
+	if err := m.RenewToken(ctx); err != nil {
 		return err
 	}
-	SessionManager.Put(ctx, sessionKey, sessionData{
+	m.Put(ctx, sessionKey, sessionData{
 		User:      u,
 		CreatedAt: time.Now(),
 	})
 	return nil
 }
 
-func getSession(r *http.Request) (sessionData, bool) {
-	sess, ok := SessionManager.Get(r.Context(), sessionKey).(sessionData)
+func (m *Manager) getSession(r *http.Request) (sessionData, bool) {
+	sess, ok := m.Get(r.Context(), sessionKey).(sessionData)
 	if !ok || sess.User == nil {
 		return sessionData{}, false
 	}
 	return sess, true
 }
 
-func UserFromContext(ctx context.Context) (*types.User, bool) {
+func (m *Manager) UserFromContext(ctx context.Context) (*types.User, bool) {
 	if ctx == nil {
 		return nil, false
 	}
-	if sess, ok := SessionManager.Get(ctx, sessionKey).(sessionData); ok && sess.User != nil {
+	if sess, ok := m.Get(ctx, sessionKey).(sessionData); ok && sess.User != nil {
 		return sess.User, true
 	}
 	if sess, ok := ctx.Value(sessionContextKey{}).(sessionData); ok && sess.User != nil {
@@ -72,8 +78,8 @@ func UserFromContext(ctx context.Context) (*types.User, bool) {
 	return nil, false
 }
 
-func GetSessionFromUserName(username string) (sessionData, bool) {
-	store, ok := SessionManager.Store.(scs.IterableStore)
+func (m *Manager) GetSessionFromUserName(username string) (sessionData, bool) {
+	store, ok := m.Store.(scs.IterableStore)
 	if !ok {
 		return sessionData{}, false
 	}
@@ -82,7 +88,7 @@ func GetSessionFromUserName(username string) (sessionData, bool) {
 		return sessionData{}, false
 	}
 	for _, raw := range sessions {
-		_, values, err := SessionManager.Codec.Decode(raw)
+		_, values, err := m.Codec.Decode(raw)
 		if err != nil {
 			continue
 		}
@@ -94,17 +100,17 @@ func GetSessionFromUserName(username string) (sessionData, bool) {
 	return sessionData{}, false
 }
 
-func DestroySession(ctx context.Context) error {
-	return SessionManager.Destroy(ctx)
+func (m *Manager) DestroySession(ctx context.Context) error {
+	return m.Destroy(ctx)
 }
 
 type sessionContextKey struct{}
 
-func SessionMiddleware() func(huma.Context, func(huma.Context)) {
+func (m *Manager) SessionMiddleware() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		req, w := humachi.Unwrap(ctx)
 
-		sess, ok := getSession(req)
+		sess, ok := m.getSession(req)
 		if !ok || sess.User == nil {
 			http.Redirect(w, req, "/login", http.StatusSeeOther)
 			return

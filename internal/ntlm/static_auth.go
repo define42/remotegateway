@@ -21,8 +21,9 @@ import (
 */
 
 type StaticAuth struct {
-	mu         sync.Mutex
-	Challenges map[string]NtlmChallengeState
+	mu             sync.Mutex
+	Challenges     map[string]NtlmChallengeState
+	SessionManager *session.Manager
 }
 
 const StaticUser = "testuser"
@@ -185,7 +186,12 @@ func (a *StaticAuth) VerifyNTLMAuthenticate(r *http.Request, data []byte, scheme
 		return "", a.ntlmChallengeError(r, scheme)
 	}
 
-	userLdap, ok := session.GetSessionFromUserName(msg.UserName)
+	if a.SessionManager == nil {
+		log.Printf("NTLM auth failed, session manager not configured")
+		return "", a.ntlmChallengeError(r, scheme)
+	}
+
+	userLdap, ok := a.SessionManager.GetSessionFromUserName(msg.UserName)
 	if !ok {
 		log.Printf("NTLM auth failed, user %q not found", msg.UserName)
 		return "", a.ntlmChallengeError(r, scheme)

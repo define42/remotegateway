@@ -202,7 +202,7 @@ func ensureTLSCert(certPath, keyPath string) error {
    ---------------------------
 */
 
-func gatewayRouter() http.Handler {
+func gatewayRouter(sessionManager *session.Manager) http.Handler {
 	gw := protocol.Gateway{
 		ServerConf: &protocol.ServerConf{
 			IdleTimeout:                 0,
@@ -214,20 +214,20 @@ func gatewayRouter() http.Handler {
 	}
 
 	var gatewayHandler http.Handler = http.HandlerFunc(gw.HandleGatewayProtocol)
-	gatewayHandler = ntlm.BasicAuthMiddleware(&ntlm.StaticAuth{}, gatewayHandler)
+	gatewayHandler = ntlm.BasicAuthMiddleware(&ntlm.StaticAuth{SessionManager: sessionManager}, gatewayHandler)
 	gatewayHandler = common.EnrichContext(gatewayHandler)
 	return gatewayHandler
 }
 
-func getRemoteGatewayRotuer() http.Handler {
+func getRemoteGatewayRotuer(sessionManager *session.Manager) http.Handler {
 
 	router := chi.NewRouter()
-	router.Use(session.SessionManager.LoadAndSave)
+	router.Use(sessionManager.LoadAndSave)
 
 	router.Handle("/static/*", http.FileServer(http.FS(staticFiles)))
-	router.Post("/login", handleLoginPost)
+	router.Post("/login", handleLoginPost(sessionManager))
 	router.Get("/login", handleLoginGet)
-	router.HandleFunc("/logout", handleLogout)
+	router.HandleFunc("/logout", handleLogout(sessionManager))
 
 	router.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -241,10 +241,10 @@ func getRemoteGatewayRotuer() http.Handler {
 	apiCfg.DocsPath = ""
 	apiCfg.SchemasPath = ""
 	api := humachi.New(router, apiCfg)
-	registerAPI(api)
+	registerAPI(api, sessionManager)
 
 	//mux.Handle("/rdgateway/", gatewayHandler)
-	gatewayHandler := gatewayRouter()
+	gatewayHandler := gatewayRouter(sessionManager)
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -262,9 +262,9 @@ func getRemoteGatewayRotuer() http.Handler {
 
 }
 
-func registerAPI(api huma.API) {
+func registerAPI(api huma.API, sessionManager *session.Manager) {
 	group := huma.NewGroup(api, "/api")
-	group.UseMiddleware(session.SessionMiddleware())
+	group.UseMiddleware(sessionManager.SessionMiddleware())
 	huma.Get(group, "/rdpgw.rdp", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
@@ -343,7 +343,7 @@ func registerAPI(api huma.API) {
 					return
 				}
 
-				user, ok := session.UserFromContext(req.Context())
+				user, ok := sessionManager.UserFromContext(req.Context())
 				if !ok {
 					writeJSON(w, http.StatusUnauthorized, dashboardActionResponse{
 						OK:    false,
@@ -445,7 +445,8 @@ func main() {
 
 	//	fmt.Println(virt.ListVMs())
 
-	mux := getRemoteGatewayRotuer()
+	sessionManager := session.NewManager()
+	mux := getRemoteGatewayRotuer(sessionManager)
 
 	srv := &http.Server{
 		Addr:      ":8443",

@@ -32,30 +32,32 @@ func extractCredentials(r *http.Request) (string, string, bool, error) {
 	return username, password, true, nil
 }
 
-func handleLoginPost(w http.ResponseWriter, r *http.Request) {
-	username, password, ok, err := extractCredentials(r)
-	if err != nil {
-		serveLogin(w, "Invalid form submission.")
-		return
-	}
-	if !ok {
-		serveLogin(w, "Missing credentials.")
-		return
-	}
+func handleLoginPost(sessionManager *session.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok, err := extractCredentials(r)
+		if err != nil {
+			serveLogin(w, "Invalid form submission.")
+			return
+		}
+		if !ok {
+			serveLogin(w, "Missing credentials.")
+			return
+		}
 
-	user, err := ldap.LdapAuthenticateAccess(username, password)
-	if err != nil {
-		log.Printf("ldap auth failed for %s: %v", username, err)
-		serveLogin(w, "Invalid credentials.")
-		return
-	}
+		user, err := ldap.LdapAuthenticateAccess(username, password)
+		if err != nil {
+			log.Printf("ldap auth failed for %s: %v", username, err)
+			serveLogin(w, "Invalid credentials.")
+			return
+		}
 
-	if err := session.CreateSession(r.Context(), user); err != nil {
-		log.Printf("session create failed for %s: %v", username, err)
-		serveLogin(w, "Login failed.")
-		return
+		if err := sessionManager.CreateSession(r.Context(), user); err != nil {
+			log.Printf("session create failed for %s: %v", username, err)
+			serveLogin(w, "Login failed.")
+			return
+		}
+		http.Redirect(w, r, "/api/dashboard", http.StatusSeeOther)
 	}
-	http.Redirect(w, r, "/api/dashboard", http.StatusSeeOther)
 }
 
 func serveLogin(w http.ResponseWriter, message string) {
@@ -78,9 +80,11 @@ func handleLoginGet(w http.ResponseWriter, r *http.Request) {
 	serveLogin(w, "")
 }
 
-func handleLogout(w http.ResponseWriter, r *http.Request) {
-	if err := session.DestroySession(r.Context()); err != nil {
-		log.Printf("session destroy failed: %v", err)
+func handleLogout(sessionManager *session.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := sessionManager.DestroySession(r.Context()); err != nil {
+			log.Printf("session destroy failed: %v", err)
+		}
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	}
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

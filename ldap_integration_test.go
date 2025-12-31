@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"remotegateway/internal/config"
 	"remotegateway/internal/ldap"
+	"remotegateway/internal/session"
 	"strings"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	baseURL := setupLDAPProxyServer(t, ctx)
+	baseURL, _ := setupLDAPProxyServer(t, ctx)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	accessCases := []requestCase{
@@ -100,8 +101,10 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 			return http.ErrUseLastResponse
 		},
 	}
-	assertLoginSuccess(t, ctx, baseURL, loginClient, "testuser", "dogood")
-	assertLoginSuccess(t, ctx, baseURL, loginClient, "serviceuser", "mysecret")
+	sessionCookie := loginAndGetSessionCookie(t, ctx, baseURL, loginClient, "testuser", "dogood")
+	assertLogoutSuccess(t, ctx, baseURL, loginClient, sessionCookie)
+	sessionCookie = loginAndGetSessionCookie(t, ctx, baseURL, loginClient, "serviceuser", "mysecret")
+	assertLogoutSuccess(t, ctx, baseURL, loginClient, sessionCookie)
 	assertLoginFailure(t, ctx, baseURL, loginClient, "testuser", "wrongpass", "Invalid credentials.")
 	assertLoginFailure(t, ctx, baseURL, loginClient, "testuser", "", "Missing credentials.")
 }
@@ -152,7 +155,7 @@ func assertRequestCases(t *testing.T, ctx context.Context, baseURL string, clien
 	}
 }
 
-func assertLoginSuccess(t *testing.T, ctx context.Context, baseURL string, client *http.Client, username, password string) {
+func loginAndGetSessionCookie(t *testing.T, ctx context.Context, baseURL string, client *http.Client, username, password string) *http.Cookie {
 	t.Helper()
 	form := url.Values{}
 	form.Set("username", username)
@@ -165,8 +168,33 @@ func assertLoginSuccess(t *testing.T, ctx context.Context, baseURL string, clien
 	if loc := header.Get("Location"); loc != "/api/dashboard" {
 		t.Fatalf("expected redirect to /api/dashboard, got %q", loc)
 	}
-	if !strings.Contains(header.Get("Set-Cookie"), "cv_session=") {
-		t.Fatalf("expected session cookie on login")
+	for _, raw := range header["Set-Cookie"] {
+		cookie, err := http.ParseSetCookie(raw)
+		if err != nil {
+			continue
+		}
+		if cookie.Name == "cv_session" {
+			return cookie
+		}
+	}
+	t.Fatalf("expected session cookie on login")
+	return nil
+}
+
+func assertLogoutSuccess(t *testing.T, ctx context.Context, baseURL string, client *http.Client, sessionCookie *http.Cookie) {
+	t.Helper()
+	if sessionCookie == nil {
+		t.Fatalf("expected session cookie to be set")
+	}
+	headers := map[string]string{
+		"Cookie": sessionCookie.Name + "=" + sessionCookie.Value,
+	}
+	status, _, header := doRequest(t, ctx, baseURL, client, http.MethodGet, "/logout", "", "", nil, headers)
+	if status != http.StatusSeeOther {
+		t.Fatalf("expected 303 for logout, got %d", status)
+	}
+	if loc := header.Get("Location"); loc != "/login" {
+		t.Fatalf("expected redirect to /login, got %q", loc)
 	}
 }
 
@@ -185,7 +213,7 @@ func assertLoginFailure(t *testing.T, ctx context.Context, baseURL string, clien
 	}
 }
 
-func setupLDAPProxyServer(t *testing.T, ctx context.Context) string {
+func setupLDAPProxyServer(t *testing.T, ctx context.Context) (string, *session.Manager) {
 	t.Helper()
 
 	ldapURL, stopLDAP := startGlauth(ctx, t, "")
@@ -199,10 +227,11 @@ func setupLDAPProxyServer(t *testing.T, ctx context.Context) string {
 		config.LdapCfg = prevCfg
 	})
 
-	server := httptest.NewServer(getRemoteGatewayRotuer())
+	sessionManager := session.NewManager()
+	server := httptest.NewServer(getRemoteGatewayRotuer(sessionManager))
 	t.Cleanup(server.Close)
 
-	return server.URL
+	return server.URL, sessionManager
 }
 
 func configureLDAPEnv(t *testing.T, ldapURL string) {
