@@ -295,6 +295,7 @@ func getRemoteGatewayRotuer() http.Handler {
 	router := chi.NewRouter()
 	router.Use(sessionManager.LoadAndSave)
 
+	router.Handle("/static/*", http.FileServer(http.FS(staticFiles)))
 	router.Post("/login", handleLoginPost)
 	router.Get("/login", handleLoginGet)
 	router.HandleFunc("/logout", handleLogout)
@@ -359,16 +360,31 @@ func registerAPI(api huma.API) {
 	huma.Get(group, "/dashboard", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
-				req, w := humachi.Unwrap(ctx)
-				gatewayHost := gatewayHostFromRequest(req)
-				targetHost := rdpTargetFromRequest(req)
-				actionMessage := ""
-				if req.URL.Query().Get("removed") != "" {
-					actionMessage = "VM removed."
-				} else if req.URL.Query().Get("created") != "" {
-					actionMessage = "VM creation started."
+				_, w := humachi.Unwrap(ctx)
+				renderDashboardPage(w)
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+
+	huma.Get(group, "/dashboard/data", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				_, w := humachi.Unwrap(ctx)
+				vmRows, err := listDashboardVMs()
+				if err != nil {
+					log.Printf("list vms: %v", err)
+					writeJSON(w, http.StatusInternalServerError, dashboardDataResponse{
+						Filename: rdpFilename,
+						Error:    "Unable to load virtual machines right now.",
+					})
+					return
 				}
-				renderDashboardPage(w, gatewayHost, targetHost, actionMessage, "")
+				writeJSON(w, http.StatusOK, dashboardDataResponse{
+					Filename: rdpFilename,
+					VMs:      vmRows,
+				})
 			},
 		}, nil
 	}, func(op *huma.Operation) {
@@ -379,28 +395,38 @@ func registerAPI(api huma.API) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
 				req, w := humachi.Unwrap(ctx)
-				gatewayHost := gatewayHostFromRequest(req)
-				targetHost := rdpTargetFromRequest(req)
 
 				if err := req.ParseForm(); err != nil {
 					log.Printf("dashboard form parse failed: %v", err)
-					renderDashboardPage(w, gatewayHost, targetHost, "", "Invalid form submission.")
+					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+						OK:    false,
+						Error: "Invalid form submission.",
+					})
 					return
 				}
 
 				name, err := validateVMName(req.FormValue("vm_name"))
 				if err != nil {
-					renderDashboardPage(w, gatewayHost, targetHost, "", err.Error())
+					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+						OK:    false,
+						Error: err.Error(),
+					})
 					return
 				}
 
 				if err := virt.BootNewVM(name, staticUser, staticPassword); err != nil {
 					log.Printf("boot new vm %q failed: %v", name, err)
-					renderDashboardPage(w, gatewayHost, targetHost, "", "Failed to create VM.")
+					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
+						OK:    false,
+						Error: "Failed to create VM.",
+					})
 					return
 				}
 
-				http.Redirect(w, req, "/api/dashboard?created=1", http.StatusSeeOther)
+				writeJSON(w, http.StatusOK, dashboardActionResponse{
+					OK:      true,
+					Message: "VM creation started.",
+				})
 			},
 		}, nil
 	}, func(op *huma.Operation) {
@@ -411,32 +437,45 @@ func registerAPI(api huma.API) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
 				req, w := humachi.Unwrap(ctx)
-				gatewayHost := gatewayHostFromRequest(req)
-				targetHost := rdpTargetFromRequest(req)
 
 				if err := req.ParseForm(); err != nil {
 					log.Printf("dashboard remove form parse failed: %v", err)
-					renderDashboardPage(w, gatewayHost, targetHost, "", "Invalid form submission.")
+					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+						OK:    false,
+						Error: "Invalid form submission.",
+					})
 					return
 				}
 
 				name := strings.TrimSpace(req.FormValue("vm_name"))
 				if name == "" {
-					renderDashboardPage(w, gatewayHost, targetHost, "", "VM name is required.")
+					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+						OK:    false,
+						Error: "VM name is required.",
+					})
 					return
 				}
 				if len(name) > 128 {
-					renderDashboardPage(w, gatewayHost, targetHost, "", "VM name is too long.")
+					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+						OK:    false,
+						Error: "VM name is too long.",
+					})
 					return
 				}
 
 				if err := removeVM(name); err != nil {
 					log.Printf("remove vm %q failed: %v", name, err)
-					renderDashboardPage(w, gatewayHost, targetHost, "", "Failed to remove VM.")
+					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
+						OK:    false,
+						Error: "Failed to remove VM.",
+					})
 					return
 				}
 
-				http.Redirect(w, req, "/api/dashboard?removed=1", http.StatusSeeOther)
+				writeJSON(w, http.StatusOK, dashboardActionResponse{
+					OK:      true,
+					Message: "VM removed.",
+				})
 			},
 		}, nil
 	}, func(op *huma.Operation) {

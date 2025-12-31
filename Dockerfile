@@ -6,7 +6,8 @@ WORKDIR /app
 
 RUN apk add --no-cache \
     build-base \
-    pkgconf libvirt-dev nmap
+    pkgconf libvirt-dev nmap \
+    nodejs npm
 
 # Enable static binary
 ENV CGO_ENABLED=0 \
@@ -18,6 +19,14 @@ ENV CGO_ENABLED=0 \
 COPY go.mod go.sum  ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
+
+# Build frontend assets
+COPY tsconfig.json ./
+COPY web web
+COPY static static
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --no-save typescript@5.6.3 && \
+    npx tsc -p tsconfig.json
 
 # Copy source
 COPY *.go ./

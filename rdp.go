@@ -1,7 +1,7 @@
 package main
 
 import (
-	"html/template"
+	"encoding/json"
 	"log"
 	"net"
 	"net/http"
@@ -134,6 +134,11 @@ const indexHTML = `<!doctype html>
         color: #062238;
         cursor: pointer;
       }
+      .vm-form button:disabled,
+      .vm-remove:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
       .vm-success {
         margin: 12px 0 0;
         padding: 10px 12px;
@@ -201,9 +206,6 @@ const indexHTML = `<!doctype html>
         gap: 8px;
         align-items: center;
       }
-      .vm-remove-form {
-        margin: 0;
-      }
       .vm-remove {
         border: 1px solid rgba(248,113,113,0.6);
         background: transparent;
@@ -227,7 +229,8 @@ const indexHTML = `<!doctype html>
         font-weight: 600;
         font-size: 13px;
       }
-      .vm-empty {
+      .vm-empty,
+      .vm-loading {
         margin: 12px 0 0;
         color: var(--muted);
       }
@@ -237,137 +240,78 @@ const indexHTML = `<!doctype html>
     </style>
   </head>
   <body>
-    <main class="card">
-      <section class="vm-panel">
-        <div class="vm-header">
-          <h2>Available VMs</h2>
-          <a class="logout-button" href="/logout">Logout</a>
-        </div>
-        <p class="vm-subtitle">Live inventory from libvirt.</p>
-        <form class="vm-form" method="post" action="/api/dashboard">
-          <div class="field">
-            <label for="vm-name">New VM Name</label>
-            <input id="vm-name" name="vm_name" autocomplete="off" pattern="[A-Za-z0-9_-]+" maxlength="64" title="Letters, numbers, '-' or '_' only" required>
+    <div id="app"></div>
+    <noscript>
+      <main class="card">
+        <section class="vm-panel">
+          <div class="vm-header">
+            <h2>Available VMs</h2>
           </div>
-          <button type="submit">Create VM</button>
-        </form>
-        {{if .ActionError}}
-          <p class="vm-error">{{.ActionError}}</p>
-        {{else if .ActionMessage}}
-          <p class="vm-success">{{.ActionMessage}}</p>
-        {{end}}
-        {{if .VMError}}
-          <p class="vm-error">{{.VMError}}</p>
-        {{else if .VMs}}
-          <div class="vm-table-wrap">
-            <table class="vm-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>IP Address</th>
-                  <th>State</th>
-                  <th>Memory</th>
-                  <th>vCPU</th>
-                  <th>Disk</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{range .VMs}}
-                <tr>
-                  <td class="vm-name">{{.Name}}</td>
-                  <td>{{if .IP}}{{.IP}}{{else}}n/a{{end}}</td>
-                  <td class="vm-state">{{.State}}</td>
-                  <td>{{if .MemoryMiB}}{{.MemoryMiB}} MiB{{else}}n/a{{end}}</td>
-                  <td>{{if .VCPU}}{{.VCPU}}{{else}}n/a{{end}}</td>
-                  <td>{{if .VolumeGB}}{{.VolumeGB}} GB{{else}}n/a{{end}}</td>
-                  <td>
-                    <div class="vm-actions">
-                      {{if .RDPHost}}
-                        <a class="vm-download" href="/api/{{$.Filename}}?target={{.RDPHost | urlquery}}">Download</a>
-                      {{else}}
-                        <span class="vm-disabled">n/a</span>
-                      {{end}}
-                      <form class="vm-remove-form" method="post" action="/api/dashboard/remove">
-                        <input type="hidden" name="vm_name" value="{{.Name}}">
-                        <button class="vm-remove" type="submit">Remove</button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-                {{end}}
-              </tbody>
-            </table>
-          </div>
-        {{else}}
-          <p class="vm-empty">No virtual machines found.</p>
-        {{end}}
-      </section>
-    </main>
+          <p class="vm-error">JavaScript is required to use the dashboard.</p>
+        </section>
+      </main>
+    </noscript>
+    <script defer src="/static/dashboard.js"></script>
   </body>
 </html>
 `
 
-var dashboardTemplate = template.Must(template.New("dashboard").Parse(indexHTML))
-
-type indexVM struct {
-	Name      string
-	IP        string
-	RDPHost   string
-	State     string
-	MemoryMiB int
-	VCPU      int
-	VolumeGB  int
+type dashboardVM struct {
+	Name      string `json:"name"`
+	IP        string `json:"ip"`
+	RDPHost   string `json:"rdpHost"`
+	State     string `json:"state"`
+	MemoryMiB int    `json:"memoryMiB"`
+	VCPU      int    `json:"vcpu"`
+	VolumeGB  int    `json:"volumeGB"`
 }
 
-func renderDashboardPage(w http.ResponseWriter, gatewayHost, targetHost, actionMessage, actionError string) {
+type dashboardDataResponse struct {
+	Filename string        `json:"filename"`
+	VMs      []dashboardVM `json:"vms"`
+	Error    string        `json:"error,omitempty"`
+}
+
+type dashboardActionResponse struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+func renderDashboardPage(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write([]byte(indexHTML)); err != nil {
+		log.Printf("render dashboard page: %v", err)
+	}
+}
+
+func listDashboardVMs() ([]dashboardVM, error) {
 	vmList, err := virt.ListVMs("")
-	var vmRows []indexVM
-	var vmError string
 	if err != nil {
-		log.Printf("list vms: %v", err)
-		vmError = "Unable to load virtual machines right now."
-	} else {
-		vmRows = make([]indexVM, 0, len(vmList))
-		for _, vm := range vmList {
-			/*
-				targetHost := vm.PrimaryIP
-				if targetHost == "" {
-					targetHost = vm.Name
-				}*/
-			rdpHost := rdpTargetHost(vm.Name)
-			vmRows = append(vmRows, indexVM{
-				Name:      vm.Name,
-				IP:        vm.IP,
-				RDPHost:   rdpHost,
-				State:     vm.State,
-				MemoryMiB: vm.MemoryMiB,
-				VCPU:      vm.VCPU,
-				VolumeGB:  vm.VolumeGB,
-			})
-		}
+		return nil, err
 	}
-	data := struct {
-		Gateway       string
-		Target        string
-		Filename      string
-		VMs           []indexVM
-		VMError       string
-		ActionMessage string
-		ActionError   string
-	}{
-		Gateway:       gatewayHost,
-		Target:        targetHost,
-		Filename:      rdpFilename,
-		VMs:           vmRows,
-		VMError:       vmError,
-		ActionMessage: actionMessage,
-		ActionError:   actionError,
+	rows := make([]dashboardVM, 0, len(vmList))
+	for _, vm := range vmList {
+		rdpHost := rdpTargetHost(vm.Name)
+		rows = append(rows, dashboardVM{
+			Name:      vm.Name,
+			IP:        vm.IP,
+			RDPHost:   rdpHost,
+			State:     vm.State,
+			MemoryMiB: vm.MemoryMiB,
+			VCPU:      vm.VCPU,
+			VolumeGB:  vm.VolumeGB,
+		})
 	}
-	if err := dashboardTemplate.Execute(w, data); err != nil {
-		http.Error(w, "failed to render page", http.StatusInternalServerError)
-		return
+	return rows, nil
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(payload); err != nil {
+		log.Printf("write json response: %v", err)
 	}
 }
 
