@@ -191,7 +191,7 @@ func (a *StaticAuth) VerifyNTLMAuthenticate(r *http.Request, data []byte, scheme
 		return "", a.ntlmChallengeError(r, scheme)
 	}
 
-	if !verifyNTLMv2Response(challenge, userLdap.User.NtlmPassword, msg.NtChallengeResponse) {
+	if !verifyNTLMv2Response(challenge, userLdap.User.GetNtlmPassword(), msg.NtChallengeResponse) {
 		log.Printf("NTLM auth failed for user=%q domain=%q", msg.UserName, msg.DomainName)
 		return "", a.ntlmChallengeError(r, scheme)
 	}

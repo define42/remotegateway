@@ -74,7 +74,7 @@ func GetSessionFromUserName(username string) (sessionData, bool) {
 			continue
 		}
 		if sess, ok := values[sessionKey].(sessionData); ok &&
-			sess.User != nil && sess.User.Name == username {
+			sess.User != nil && sess.User.GetName() == username {
 			return sess, true
 		}
 	}

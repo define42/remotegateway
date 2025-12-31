@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"remotegateway/internal/contextKey"
@@ -254,8 +253,6 @@ func buildTestNTLMToken(messageType uint32) []byte {
 
 func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		fmt.Println("Basic auth middleware called")
 		user, err := authenticator.Authenticate(r.Context(), r)
 		if err != nil {
 			var challenge AuthChallenge

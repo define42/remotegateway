@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"remotegateway/internal/hash"
 
-	"github.com/tredoe/osutil/user/crypt/sha512_crypt"
 	"libvirt.org/go/libvirt"
 )
 
@@ -18,7 +18,7 @@ func CreateUbuntuSeedISOToPool(
 ) error {
 
 	// 1. Generate password hash
-	passSha, err := CloudInitPasswordHash(password)
+	passSha, err := hash.CloudInitPasswordHash(password)
 	if err != nil {
 		return err
 	}
@@ -193,18 +193,4 @@ local-hostname: ` + hostname + `
 	}
 
 	return stream.Finish()
-}
-
-// CloudInitPasswordHash generates a /etc/shadow compatible
-// SHA-512 ($6$) password hash for cloud-init.
-func CloudInitPasswordHash(password string) (string, error) {
-	saltGen := sha512_crypt.GetSalt()
-	salt := saltGen.GenerateWRounds(16, 5000)
-	c := sha512_crypt.New()
-	hash, err := c.Generate([]byte(password), salt)
-	if err != nil {
-		return "", err
-	}
-
-	return hash, nil
 }
