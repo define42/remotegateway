@@ -36,7 +36,7 @@ func EncodeUTF16(s string) []byte {
 	ret := new(bytes.Buffer)
 	enc := utf16.Encode([]rune(s))
 	for c := range enc {
-		binary.Write(ret, binary.LittleEndian, enc[c])
+		_ = binary.Write(ret, binary.LittleEndian, enc[c])
 	}
 	return ret.Bytes()
 }

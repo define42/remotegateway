@@ -80,8 +80,16 @@ func (s *Server) Process(ctx context.Context) error {
 				log.Printf("Handshake attempted while in wrong state %d != %d", s.State, SERVER_STATE_INITIAL)
 				return errors.New("wrong state")
 			}
-			major, minor, _, _ := s.handshakeRequest(pkt) // todo check if auth matches what the handler can do
-			msg := s.handshakeResponse(major, minor)
+			major, minor, _, _, err := s.handshakeRequest(pkt) // todo check if auth matches what the handler can do
+			if err != nil {
+				return fmt.Errorf("failed to parse handshake request: %w", err)
+			}
+
+			msg, err := s.handshakeResponse(major, minor)
+			if err != nil {
+				return err
+			}
+
 			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
 				return err
 			}
@@ -103,7 +111,11 @@ func (s *Server) Process(ctx context.Context) error {
 					return errors.New("invalid PAA cookie")
 				}
 			}
-			msg := s.tunnelResponse()
+			msg, err := s.tunnelResponse()
+			if err != nil {
+				return err
+			}
+
 			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
 				return err
 			}
@@ -116,14 +128,22 @@ func (s *Server) Process(ctx context.Context) error {
 					s.State, SERVER_STATE_TUNNEL_CREATE)
 				return errors.New("wrong state")
 			}
-			client := s.tunnelAuthRequest(pkt)
+			client, err := s.tunnelAuthRequest(pkt)
+			if err != nil {
+				return fmt.Errorf("failed to parse tunnel auth request: %w", err)
+			}
+
 			if s.VerifyTunnelAuthFunc != nil {
 				if ok, _ := s.VerifyTunnelAuthFunc(ctx, client); !ok {
 					log.Printf("Invalid client name: %s", client)
 					return errors.New("invalid client name")
 				}
 			}
-			msg := s.tunnelAuthResponse()
+			msg, err := s.tunnelAuthResponse()
+			if err != nil {
+				return err
+			}
+
 			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
 				return err
 			}
@@ -135,7 +155,10 @@ func (s *Server) Process(ctx context.Context) error {
 					s.State, SERVER_STATE_TUNNEL_AUTHORIZE)
 				return errors.New("wrong state")
 			}
-			server, port := s.channelRequest(pkt)
+			server, port, err := s.channelRequest(pkt)
+			if err != nil {
+				return fmt.Errorf("failed to parse channel request: %w", err)
+			}
 
 			if s.ConvertToInternalServerFunc != nil {
 				internalServer, err := s.ConvertToInternalServerFunc(ctx, server)
@@ -161,7 +184,11 @@ func (s *Server) Process(ctx context.Context) error {
 				return err
 			}
 			log.Printf("Connection established")
-			msg := s.channelResponse()
+			msg, err := s.channelResponse()
+			if err != nil {
+				return err
+			}
+
 			if _, err := s.Session.TransportOut.WritePacket(msg); err != nil {
 				return err
 			}
@@ -206,7 +233,7 @@ func (s *Server) Process(ctx context.Context) error {
 // Creates a packet the is a response to a handshakeRequest request
 // HTTP_EXTENDED_AUTH_SSPI_NTLM is not supported in Linux
 // but could be in Windows. However the NTLM protocol is insecure
-func (s *Server) handshakeResponse(major byte, minor byte) []byte {
+func (s *Server) handshakeResponse(major byte, minor byte) ([]byte, error) {
 	var caps uint16
 	if s.SmartCardAuth {
 		caps = caps | HTTP_EXTENDED_AUTH_SC
@@ -216,20 +243,46 @@ func (s *Server) handshakeResponse(major byte, minor byte) []byte {
 	}
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, uint32(0)) // error_code
-	buf.Write([]byte{major, minor})
-	binary.Write(buf, binary.LittleEndian, uint16(0))    // server version
-	binary.Write(buf, binary.LittleEndian, uint16(caps)) // extended auth
 
-	return createPacket(PKT_TYPE_HANDSHAKE_RESPONSE, buf.Bytes())
+	// error_code
+	if err := binary.Write(buf, binary.LittleEndian, uint32(0)); err != nil {
+		return nil, err
+	}
+
+	if _, err := buf.Write([]byte{major, minor}); err != nil {
+		return nil, err
+	}
+
+	// server version
+	if err := binary.Write(buf, binary.LittleEndian, uint16(0)); err != nil {
+		return nil, err
+	}
+	// extended auth capabilities
+	if err := binary.Write(buf, binary.LittleEndian, uint16(caps)); err != nil {
+		return nil, err
+	}
+
+	return createPacket(PKT_TYPE_HANDSHAKE_RESPONSE, buf.Bytes()), nil
 }
 
-func (s *Server) handshakeRequest(data []byte) (major byte, minor byte, version uint16, extAuth uint16) {
+func (s *Server) handshakeRequest(data []byte) (major byte, minor byte, version uint16, extAuth uint16, err error) {
 	r := bytes.NewReader(data)
-	binary.Read(r, binary.LittleEndian, &major)
-	binary.Read(r, binary.LittleEndian, &minor)
-	binary.Read(r, binary.LittleEndian, &version)
-	binary.Read(r, binary.LittleEndian, &extAuth)
+
+	if err = binary.Read(r, binary.LittleEndian, &major); err != nil {
+		return
+	}
+
+	if err = binary.Read(r, binary.LittleEndian, &minor); err != nil {
+		return
+	}
+
+	if err = binary.Read(r, binary.LittleEndian, &version); err != nil {
+		return
+	}
+
+	if err = binary.Read(r, binary.LittleEndian, &extAuth); err != nil {
+		return
+	}
 
 	log.Printf("major: %d, minor: %d, version: %d, ext auth: %d", major, minor, version, extAuth)
 	return
@@ -268,53 +321,95 @@ func (s *Server) tunnelRequest(data []byte) (caps uint32, cookie string, err err
 	return
 }
 
-func (s *Server) tunnelResponse() []byte {
+func (s *Server) tunnelResponse() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	binary.Write(buf, binary.LittleEndian, uint16(0))                                                                    // server version
-	binary.Write(buf, binary.LittleEndian, uint32(0))                                                                    // error code
-	binary.Write(buf, binary.LittleEndian, uint16(HTTP_TUNNEL_RESPONSE_FIELD_TUNNEL_ID|HTTP_TUNNEL_RESPONSE_FIELD_CAPS)) // fields present
-	binary.Write(buf, binary.LittleEndian, uint16(0))                                                                    // reserved
+	// server version
+	if err := binary.Write(buf, binary.LittleEndian, uint16(0)); err != nil {
+		return nil, err
+	}
+
+	// error code
+	if err := binary.Write(buf, binary.LittleEndian, uint32(0)); err != nil {
+		return nil, err
+	}
+
+	// fields present
+	if err := binary.Write(buf, binary.LittleEndian, uint16(HTTP_TUNNEL_RESPONSE_FIELD_TUNNEL_ID|HTTP_TUNNEL_RESPONSE_FIELD_CAPS)); err != nil {
+		return nil, err
+	}
+
+	// reserved
+	if err := binary.Write(buf, binary.LittleEndian, uint16(0)); err != nil {
+		return nil, err
+	}
 
 	// tunnel id (when is it used?)
-	binary.Write(buf, binary.LittleEndian, uint32(tunnelId))
+	if err := binary.Write(buf, binary.LittleEndian, uint32(tunnelId)); err != nil {
+		return nil, err
+	}
 
-	binary.Write(buf, binary.LittleEndian, uint32(HTTP_CAPABILITY_IDLE_TIMEOUT))
+	if err := binary.Write(buf, binary.LittleEndian, uint32(HTTP_CAPABILITY_IDLE_TIMEOUT)); err != nil {
+		return nil, err
+	}
 
-	return createPacket(PKT_TYPE_TUNNEL_RESPONSE, buf.Bytes())
+	return createPacket(PKT_TYPE_TUNNEL_RESPONSE, buf.Bytes()), nil
 }
 
-func (s *Server) tunnelAuthRequest(data []byte) string {
+func (s *Server) tunnelAuthRequest(data []byte) (string, error) {
 	buf := bytes.NewReader(data)
 
 	var size uint16
-	binary.Read(buf, binary.LittleEndian, &size)
+	if err := binary.Read(buf, binary.LittleEndian, &size); err != nil {
+		return "", err
+	}
 	clData := make([]byte, size)
-	binary.Read(buf, binary.LittleEndian, &clData)
+	if err := binary.Read(buf, binary.LittleEndian, &clData); err != nil {
+		return "", err
+	}
+
 	clientName, _ := DecodeUTF16(clData)
 
-	return clientName
+	return clientName, nil
 }
 
-func (s *Server) tunnelAuthResponse() []byte {
+func (s *Server) tunnelAuthResponse() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	binary.Write(buf, binary.LittleEndian, uint32(0))                                                                                        // error code
-	binary.Write(buf, binary.LittleEndian, uint16(HTTP_TUNNEL_AUTH_RESPONSE_FIELD_REDIR_FLAGS|HTTP_TUNNEL_AUTH_RESPONSE_FIELD_IDLE_TIMEOUT)) // fields present
-	binary.Write(buf, binary.LittleEndian, uint16(0))                                                                                        // reserved
+	// error code
+	if err := binary.Write(buf, binary.LittleEndian, uint32(0)); err != nil {
+		return nil, err
+	}
+
+	// fields present
+	if err := binary.Write(buf, binary.LittleEndian, uint16(HTTP_TUNNEL_AUTH_RESPONSE_FIELD_REDIR_FLAGS|HTTP_TUNNEL_AUTH_RESPONSE_FIELD_IDLE_TIMEOUT)); err != nil {
+		return nil, err
+	}
+
+	// reserved
+	if err := binary.Write(buf, binary.LittleEndian, uint16(0)); err != nil {
+		return nil, err
+	}
 
 	// idle timeout
 	if s.IdleTimeout < 0 {
 		s.IdleTimeout = 0
 	}
 
-	binary.Write(buf, binary.LittleEndian, uint32(s.RedirectFlags)) // redir flags
-	binary.Write(buf, binary.LittleEndian, uint32(s.IdleTimeout))   // timeout in minutes
+	// redir flags
+	if err := binary.Write(buf, binary.LittleEndian, uint32(s.RedirectFlags)); err != nil {
+		return nil, err
+	}
 
-	return createPacket(PKT_TYPE_TUNNEL_AUTH_RESPONSE, buf.Bytes())
+	// timeout in minutes
+	if err := binary.Write(buf, binary.LittleEndian, uint32(s.IdleTimeout)); err != nil {
+		return nil, err
+	}
+
+	return createPacket(PKT_TYPE_TUNNEL_AUTH_RESPONSE, buf.Bytes()), nil
 }
 
-func (s *Server) channelRequest(data []byte) (server string, port uint16) {
+func (s *Server) channelRequest(data []byte) (server string, port uint16, err error) {
 	buf := bytes.NewReader(data)
 
 	var resourcesSize byte
@@ -322,29 +417,58 @@ func (s *Server) channelRequest(data []byte) (server string, port uint16) {
 	var protocol uint16
 	var nameSize uint16
 
-	binary.Read(buf, binary.LittleEndian, &resourcesSize)
-	binary.Read(buf, binary.LittleEndian, &alternative)
-	binary.Read(buf, binary.LittleEndian, &port)
-	binary.Read(buf, binary.LittleEndian, &protocol)
-	binary.Read(buf, binary.LittleEndian, &nameSize)
+	if err = binary.Read(buf, binary.LittleEndian, &resourcesSize); err != nil {
+		return
+	}
+
+	if err = binary.Read(buf, binary.LittleEndian, &alternative); err != nil {
+		return
+	}
+
+	if err = binary.Read(buf, binary.LittleEndian, &port); err != nil {
+		return
+	}
+
+	if err = binary.Read(buf, binary.LittleEndian, &protocol); err != nil {
+		return
+	}
+
+	if err = binary.Read(buf, binary.LittleEndian, &nameSize); err != nil {
+		return
+	}
 
 	nameData := make([]byte, nameSize)
-	binary.Read(buf, binary.LittleEndian, &nameData)
+	if err = binary.Read(buf, binary.LittleEndian, &nameData); err != nil {
+		return
+	}
 
-	server, _ = DecodeUTF16(nameData)
-
+	server, err = DecodeUTF16(nameData)
 	return
 }
 
-func (s *Server) channelResponse() []byte {
+func (s *Server) channelResponse() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	binary.Write(buf, binary.LittleEndian, uint32(0))                                     // error code
-	binary.Write(buf, binary.LittleEndian, uint16(HTTP_CHANNEL_RESPONSE_FIELD_CHANNELID)) // fields present
-	binary.Write(buf, binary.LittleEndian, uint16(0))                                     // reserved
+	// error code
+	if err := binary.Write(buf, binary.LittleEndian, uint32(0)); err != nil {
+		return nil, err
+	}
+
+	// fields present
+	if err := binary.Write(buf, binary.LittleEndian, uint16(HTTP_CHANNEL_RESPONSE_FIELD_CHANNELID)); err != nil {
+		return nil, err
+	}
+
+	// reserved
+	if err := binary.Write(buf, binary.LittleEndian, uint16(0)); err != nil {
+		return nil, err
+	}
 
 	// channel id is required for Windows clients
-	binary.Write(buf, binary.LittleEndian, uint32(1)) // channel id
+	// channel id
+	if err := binary.Write(buf, binary.LittleEndian, uint32(1)); err != nil {
+		return nil, err
+	}
 
 	// optional fields
 	// channel id uint32 (4)
@@ -352,7 +476,7 @@ func (s *Server) channelResponse() []byte {
 	// udp auth cookie 1 byte for side channel
 	// length uint16
 
-	return createPacket(PKT_TYPE_CHANNEL_RESPONSE, buf.Bytes())
+	return createPacket(PKT_TYPE_CHANNEL_RESPONSE, buf.Bytes()), nil
 }
 
 func makeRedirectFlags(flags RedirectFlags) int {

@@ -95,7 +95,11 @@ func TestServerProcessHandshakeWritesResponse(t *testing.T) {
 
 func TestTunnelAuthResponseClampsIdleTimeout(t *testing.T) {
 	srv := &Server{RedirectFlags: 0, IdleTimeout: -5}
-	packet := srv.tunnelAuthResponse()
+	packet, err := srv.tunnelAuthResponse()
+	if err != nil {
+		t.Fatalf("tunnelAuthResponse error: %v", err)
+	}
+
 	if srv.IdleTimeout != 0 {
 		t.Fatalf("expected idle timeout to clamp to 0, got %d", srv.IdleTimeout)
 	}
