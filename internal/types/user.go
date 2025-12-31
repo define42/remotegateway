@@ -29,3 +29,7 @@ func (u *User) GetName() string {
 func (u *User) GetNtlmPassword() []byte {
 	return u.NtlmPassword
 }
+
+func (u *User) GetCloudInitPasswordHash() string {
+	return u.CloudInitPasswordHash
+}

@@ -344,7 +344,16 @@ func registerAPI(api huma.API) {
 					return
 				}
 
-				if err := virt.BootNewVM(name, "testuser", "dogood"); err != nil {
+				user, ok := session.UserFromContext(req.Context())
+				if !ok {
+					writeJSON(w, http.StatusUnauthorized, dashboardActionResponse{
+						OK:    false,
+						Error: "Login required.",
+					})
+					return
+				}
+
+				if err := virt.BootNewVM(name, user); err != nil {
 					log.Printf("boot new vm %q failed: %v", name, err)
 					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
 						OK:    false,

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"remotegateway/internal/hash"
 
 	"libvirt.org/go/libvirt"
 )
@@ -13,15 +12,9 @@ func CreateUbuntuSeedISOToPool(
 	conn *libvirt.Connect,
 	volumeName string,
 	username string,
-	password string,
+	cloudInitPasswordHash string,
 	hostname string,
 ) error {
-
-	// 1. Generate password hash
-	passSha, err := hash.CloudInitPasswordHash(password)
-	if err != nil {
-		return err
-	}
 
 	// 2. Build cloud-init data
 	userData := []byte(`#cloud-config
@@ -35,7 +28,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     lock_passwd: false
-    passwd: ` + passSha + `
+    passwd: ` + cloudInitPasswordHash + `
 ssh_pwauth: true
 package_update: true
 package_upgrade: true

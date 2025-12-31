@@ -59,6 +59,19 @@ func getSession(r *http.Request) (sessionData, bool) {
 	return sess, true
 }
 
+func UserFromContext(ctx context.Context) (*types.User, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	if sess, ok := SessionManager.Get(ctx, sessionKey).(sessionData); ok && sess.User != nil {
+		return sess.User, true
+	}
+	if sess, ok := ctx.Value(sessionContextKey{}).(sessionData); ok && sess.User != nil {
+		return sess.User, true
+	}
+	return nil, false
+}
+
 func GetSessionFromUserName(username string) (sessionData, bool) {
 	store, ok := SessionManager.Store.(scs.IterableStore)
 	if !ok {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"remotegateway/internal/types"
 
 	"libvirt.org/go/libvirt"
 )
@@ -217,9 +218,9 @@ func DestroyExistingDomain(conn *libvirt.Connect, vmName string) error {
 	return nil
 }
 
-func BootNewVM(name, username, password string) error {
+func BootNewVM(name string, user *types.User) error {
 
-	vmName := username + "_" + name
+	vmName := user.GetName() + "_" + name
 
 	seedIso := vmName + "_seed.iso"
 
@@ -248,7 +249,7 @@ func BootNewVM(name, username, password string) error {
 		return fmt.Errorf("Failed to copy and resize base image: %v", err)
 	}
 
-	if err := CreateUbuntuSeedISOToPool(conn, seedIso, username, password, vmName); err != nil {
+	if err := CreateUbuntuSeedISOToPool(conn, seedIso, user.GetName(), user.GetCloudInitPasswordHash(), vmName); err != nil {
 		return fmt.Errorf("Failed to create seed ISO: %v", err)
 	}
 
