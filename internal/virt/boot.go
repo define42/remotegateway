@@ -218,9 +218,9 @@ func DestroyExistingDomain(conn *libvirt.Connect, vmName string) error {
 	return nil
 }
 
-func BootNewVM(name string, user *types.User) error {
+func BootNewVM(name string, user *types.User) (vmName string, err error) {
 
-	vmName := user.GetName() + "_" + name
+	vmName = user.GetName() + "_" + name
 
 	seedIso := vmName + "_seed.iso"
 
@@ -228,34 +228,34 @@ func BootNewVM(name string, user *types.User) error {
 	if _, err := os.Stat(BASE_IMAGE); os.IsNotExist(err) {
 		log.Printf("Base image %s not found, downloading...", BASE_IMAGE)
 		if err := downloadWithProgress(BASE_IMAGE_URL, BASE_IMAGE); err != nil {
-			return err
+			return vmName, err
 		}
 	}
 
 	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
-		return fmt.Errorf("Failed to connect to libvirt: %v", err)
+		return vmName, fmt.Errorf("Failed to connect to libvirt: %v", err)
 	}
 	defer conn.Close()
 
 	if err := DestroyExistingDomain(conn, vmName); err != nil {
-		return fmt.Errorf("Failed to destroy existing domain: %v", err)
+		return vmName, fmt.Errorf("Failed to destroy existing domain: %v", err)
 	}
 	if err := RemoveVolumes(conn, vmName, seedIso); err != nil {
-		return fmt.Errorf("Failed to remove existing volumes: %v", err)
+		return vmName, fmt.Errorf("Failed to remove existing volumes: %v", err)
 	}
 
 	if err := CopyAndResizeVolume(conn, vmName, BASE_IMAGE, 40*1024*1024*1024); err != nil {
-		return fmt.Errorf("Failed to copy and resize base image: %v", err)
+		return vmName, fmt.Errorf("Failed to copy and resize base image: %v", err)
 	}
 
 	if err := CreateUbuntuSeedISOToPool(conn, seedIso, user.GetName(), user.GetCloudInitPasswordHash(), vmName); err != nil {
-		return fmt.Errorf("Failed to create seed ISO: %v", err)
+		return vmName, fmt.Errorf("Failed to create seed ISO: %v", err)
 	}
 
 	if err := StartVM(vmName, seedIso); err != nil {
-		return fmt.Errorf("Failed to start VM: %v", err)
+		return vmName, fmt.Errorf("Failed to start VM: %v", err)
 	}
 
-	return nil
+	return vmName, nil
 }

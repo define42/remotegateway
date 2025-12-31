@@ -19,8 +19,9 @@ func TestStartVM(t *testing.T) {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	if err := virt.BootNewVM(testVMName, user); err != nil {
-		t.Fatalf("Failed to boot new VM: %v", err)
+	vmName, err := virt.BootNewVM(testVMName, user)
+	if err != nil {
+		t.Fatalf("Failed to boot new VM %s: %v", vmName, err)
 	}
 
 	vms, err := virt.ListVMs(testUsername)
@@ -28,10 +29,15 @@ func TestStartVM(t *testing.T) {
 		t.Fatalf("Failed to list VMs: %v", err)
 	}
 
-	if len(vms) != 1 {
-		t.Fatalf("Expected 1 VM, got %d", len(vms))
+	// Verify that the VM is in the list
+	found := false
+	for _, v := range vms {
+		if v.Name == vmName {
+			found = true
+			break
+		}
 	}
-
-	t.Logf("VMs: %+v", vms)
-
+	if !found {
+		t.Fatalf("Booted VM %s not found in VM list", vmName)
+	}
 }

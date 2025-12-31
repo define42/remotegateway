@@ -353,8 +353,8 @@ func registerAPI(api huma.API) {
 					return
 				}
 
-				if err := virt.BootNewVM(name, user); err != nil {
-					log.Printf("boot new vm %q failed: %v", name, err)
+				if vmName, err := virt.BootNewVM(name, user); err != nil {
+					log.Printf("boot new vm %q failed: %v", vmName, err)
 					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
 						OK:    false,
 						Error: "Failed to create VM.",
