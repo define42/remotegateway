@@ -30,7 +30,7 @@ func TestLDAPAuthenticateWithGlauthConfig(t *testing.T) {
 	os.Setenv("LDAP_USER_DOMAIN", "@example.com")
 	ldapCfg = loadLDAPConfig()
 
-	u, err := ldapAuthenticate("testuser", "dogood")
+	u, err := ldapAuthenticateAccess("testuser", "dogood")
 	if err != nil {
 		t.Fatalf("unexpected auth failure: %v", err)
 	}
@@ -189,21 +189,12 @@ func setupLDAPProxyServer(t *testing.T, ctx context.Context) string {
 	ldapURL, stopLDAP := startGlauth(ctx, t, "")
 	t.Cleanup(stopLDAP)
 
-	registryHost, stopRegistry := startRegistry(ctx, t, "")
-	t.Cleanup(stopRegistry)
-
 	configureLDAPEnv(t, ldapURL)
 
 	prevCfg := ldapCfg
 	ldapCfg = loadLDAPConfig()
 	t.Cleanup(func() {
 		ldapCfg = prevCfg
-	})
-
-	prevUpstream := upstream
-	upstream = mustParse("http://" + registryHost)
-	t.Cleanup(func() {
-		upstream = prevUpstream
 	})
 
 	server := httptest.NewServer(getRemoteGatewayRotuer())
@@ -271,43 +262,6 @@ func startGlauth(ctx context.Context, t *testing.T, network string) (string, fun
 	url := fmt.Sprintf("ldaps://%s:%s", host, port.Port())
 
 	return url, func() {
-		_ = container.Terminate(context.Background())
-	}
-}
-
-func startRegistry(ctx context.Context, t *testing.T, network string) (string, func()) {
-	t.Helper()
-
-	req := testcontainers.ContainerRequest{
-		Image:        "registry:2",
-		ExposedPorts: []string{"5000/tcp"},
-		WaitingFor:   wait.ForListeningPort("5000/tcp").WithStartupTimeout(1 * time.Minute),
-	}
-	if network != "" {
-		req.Networks = []string{network}
-		req.NetworkAliases = map[string][]string{
-			network: {"registry"},
-		}
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("start registry: %v", err)
-	}
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("registry host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "5000/tcp")
-	if err != nil {
-		t.Fatalf("registry port: %v", err)
-	}
-
-	return fmt.Sprintf("%s:%s", host, port.Port()), func() {
 		_ = container.Terminate(context.Background())
 	}
 }

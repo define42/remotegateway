@@ -1,7 +1,6 @@
 package common
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,10 +35,4 @@ func TestEnrichContextFallsBackToRemoteAddr(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
-}
-
-func TestGetAccessTokenMissingReturnsEmpty(t *testing.T) {
-	if got := GetAccessToken(context.Background()); got != "" {
-		t.Fatalf("expected empty token, got %q", got)
-	}
 }

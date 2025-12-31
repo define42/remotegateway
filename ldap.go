@@ -22,10 +22,6 @@ type LDAPConfig struct {
 	SkipTLSVerify  bool
 }
 
-func ldapAuthenticate(username, password string) (*User, error) {
-	return ldapAuthenticateAccess(username, password)
-}
-
 func ldapAuthenticateAccess(username, password string) (*User, error) {
 	conn, err := dialLDAP(ldapCfg)
 	if err != nil {

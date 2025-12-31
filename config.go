@@ -1,23 +1,13 @@
 package main
 
 import (
-	"net/url"
 	"os"
 	"strings"
 )
 
 var (
-	upstream = mustParse("http://registry:5000")
-	ldapCfg  = loadLDAPConfig()
+	ldapCfg = loadLDAPConfig()
 )
-
-func mustParse(s string) *url.URL {
-	u, err := url.Parse(s)
-	if err != nil {
-		panic(err)
-	}
-	return u
-}
 
 func loadLDAPConfig() LDAPConfig {
 	return LDAPConfig{
