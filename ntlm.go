@@ -41,14 +41,14 @@ type ntlmChallengeState struct {
 	issuedAt  time.Time
 }
 
-func ntlmChallengeKey(r *http.Request) string {
+func NtlmChallengeKey(r *http.Request) string {
 	if id := strings.TrimSpace(r.Header.Get("Rdg-Connection-Id")); id != "" {
 		return "rdg:" + id
 	}
 	return "remote:" + r.RemoteAddr
 }
 
-func ntlmMessageType(data []byte) (uint32, error) {
+func NtlmMessageType(data []byte) (uint32, error) {
 	if len(data) < 12 {
 		return 0, errors.New("NTLM message too short")
 	}
@@ -58,7 +58,7 @@ func ntlmMessageType(data []byte) (uint32, error) {
 	return binary.LittleEndian.Uint32(data[8:12]), nil
 }
 
-func extractNTLMToken(data []byte) ([]byte, error) {
+func ExtractNTLMToken(data []byte) ([]byte, error) {
 	if len(data) >= 12 && bytes.Equal(data[:8], []byte(ntlmSignature)) {
 		return data, nil
 	}
@@ -67,7 +67,7 @@ func extractNTLMToken(data []byte) ([]byte, error) {
 		return nil, errors.New("NTLM signature not found")
 	}
 	token := data[idx:]
-	if _, err := ntlmMessageType(token); err != nil {
+	if _, err := NtlmMessageType(token); err != nil {
 		return nil, err
 	}
 	return token, nil
@@ -160,7 +160,7 @@ type ntlmAuthenticateMessage struct {
 	NegotiateFlags      uint32
 }
 
-func parseNTLMAuthenticateMessage(data []byte) (*ntlmAuthenticateMessage, error) {
+func ParseNTLMAuthenticateMessage(data []byte) (*ntlmAuthenticateMessage, error) {
 	if len(data) < 64 {
 		return nil, errors.New("NTLM authenticate message too short")
 	}
@@ -209,7 +209,7 @@ type ntlmChallengeMessageFields struct {
 	TargetInfo      ntlmVarField
 }
 
-func buildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byte, error) {
+func BuildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byte, error) {
 	if len(serverChallenge) != 8 {
 		return nil, errors.New("invalid NTLM challenge length")
 	}
@@ -252,7 +252,7 @@ func buildNTLMTargetInfo(now time.Time) []byte {
 	return b.Bytes()
 }
 
-func ntlmV2Hash(password, username, domain string) []byte {
+func NtlmV2Hash(password, username, domain string) []byte {
 	return hmacMD5(ntlmHash(password), toUnicode(strings.ToUpper(username)+domain))
 }
 
@@ -262,7 +262,7 @@ func ntlmHash(password string) []byte {
 	return hash.Sum(nil)
 }
 
-func verifyNTLMv2Response(serverChallenge, ntlmV2Hash, ntResponse []byte) bool {
+func VerifyNTLMv2Response(serverChallenge, ntlmV2Hash, ntResponse []byte) bool {
 	if len(serverChallenge) != 8 || len(ntResponse) < 16 {
 		return false
 	}

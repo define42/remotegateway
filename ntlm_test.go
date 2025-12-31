@@ -12,7 +12,7 @@ import (
 
 func TestNTLMMessageType(t *testing.T) {
 	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
-	msgType, err := ntlmMessageType(token)
+	msgType, err := NtlmMessageType(token)
 	if err != nil {
 		t.Fatalf("expected message type: %v", err)
 	}
@@ -20,13 +20,13 @@ func TestNTLMMessageType(t *testing.T) {
 		t.Fatalf("expected message type %d, got %d", ntlmMessageTypeNegotiate, msgType)
 	}
 
-	if _, err := ntlmMessageType(token[:10]); err == nil {
+	if _, err := NtlmMessageType(token[:10]); err == nil {
 		t.Fatalf("expected error for short message")
 	}
 
 	bad := append([]byte(nil), token...)
 	bad[0] = 0
-	if _, err := ntlmMessageType(bad); err == nil {
+	if _, err := NtlmMessageType(bad); err == nil {
 		t.Fatalf("expected error for invalid signature")
 	}
 }
@@ -71,7 +71,7 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 	ntResponse := bytes.Repeat([]byte{0xAA}, 16)
 	msg := buildTestNTLMAuthenticateMessage(user, domain, ntResponse, true)
 
-	parsed, err := parseNTLMAuthenticateMessage(msg)
+	parsed, err := ParseNTLMAuthenticateMessage(msg)
 	if err != nil {
 		t.Fatalf("expected parse to succeed: %v", err)
 	}
@@ -86,20 +86,20 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 	}
 
 	shortResponseMsg := buildTestNTLMAuthenticateMessage(user, domain, []byte{0x01, 0x02}, true)
-	if _, err := parseNTLMAuthenticateMessage(shortResponseMsg); err == nil {
+	if _, err := ParseNTLMAuthenticateMessage(shortResponseMsg); err == nil {
 		t.Fatalf("expected error for short NT response")
 	}
 
 	invalidHeader := append([]byte(nil), msg...)
 	invalidHeader[0] = 0
-	if _, err := parseNTLMAuthenticateMessage(invalidHeader); err == nil {
+	if _, err := ParseNTLMAuthenticateMessage(invalidHeader); err == nil {
 		t.Fatalf("expected error for invalid header")
 	}
 }
 
 func TestBuildNTLMChallengeMessage(t *testing.T) {
 	challenge := []byte{0, 1, 2, 3, 4, 5, 6, 7}
-	msg, err := buildNTLMChallengeMessage(challenge, ntlmTargetName)
+	msg, err := BuildNTLMChallengeMessage(challenge, ntlmTargetName)
 	if err != nil {
 		t.Fatalf("expected build to succeed: %v", err)
 	}
@@ -141,25 +141,25 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 		t.Fatalf("expected EOL length 0, got %d", got)
 	}
 
-	if _, err := buildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName); err == nil {
+	if _, err := BuildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName); err == nil {
 		t.Fatalf("expected error for invalid challenge length")
 	}
 }
 
 func TestVerifyNTLMv2Response(t *testing.T) {
 	serverChallenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	ntlmHash := ntlmV2Hash("password", "User", "Domain")
+	ntlmHash := NtlmV2Hash("password", "User", "Domain")
 	temp := []byte{0x10, 0x20, 0x30, 0x40}
 	proof := hmacMD5(ntlmHash, serverChallenge, temp)
 	ntResponse := append(append([]byte(nil), proof...), temp...)
 
-	if !verifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse) {
+	if !VerifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse) {
 		t.Fatalf("expected NTLMv2 response to verify")
 	}
-	if verifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse[:10]) {
+	if VerifyNTLMv2Response(serverChallenge, ntlmHash, ntResponse[:10]) {
 		t.Fatalf("expected short response to fail verification")
 	}
-	if verifyNTLMv2Response(serverChallenge[:7], ntlmHash, ntResponse) {
+	if VerifyNTLMv2Response(serverChallenge[:7], ntlmHash, ntResponse) {
 		t.Fatalf("expected short challenge to fail verification")
 	}
 }
@@ -169,19 +169,19 @@ func TestNTLMChallengeKey(t *testing.T) {
 		RemoteAddr: "1.2.3.4:3389",
 		Header:     http.Header{"Rdg-Connection-Id": []string{"abc"}},
 	}
-	if got := ntlmChallengeKey(req); got != "rdg:abc" {
+	if got := NtlmChallengeKey(req); got != "rdg:abc" {
 		t.Fatalf("expected rdg key, got %q", got)
 	}
 
 	req = &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	if got := ntlmChallengeKey(req); got != "remote:1.2.3.4:3389" {
+	if got := NtlmChallengeKey(req); got != "remote:1.2.3.4:3389" {
 		t.Fatalf("expected remote key, got %q", got)
 	}
 }
 
 func TestTakeNTLMChallenge(t *testing.T) {
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	key := ntlmChallengeKey(req)
+	key := NtlmChallengeKey(req)
 	original := []byte{9, 8, 7, 6, 5, 4, 3, 2}
 	auth := &StaticAuth{
 		challenges: map[string]ntlmChallengeState{
@@ -232,7 +232,7 @@ func TestTakeNTLMChallenge(t *testing.T) {
 func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	key := ntlmChallengeKey(req)
+	key := NtlmChallengeKey(req)
 	auth := &StaticAuth{
 		challenges: map[string]ntlmChallengeState{
 			key: {
@@ -281,7 +281,7 @@ func TestVerifyNTLMAuthenticateMissingChallenge(t *testing.T) {
 func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	key := ntlmChallengeKey(req)
+	key := NtlmChallengeKey(req)
 	auth := &StaticAuth{
 		challenges: map[string]ntlmChallengeState{
 			key: {
@@ -310,7 +310,7 @@ func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
 }
 
 func buildTestNTLMv2Response(challenge []byte, user, domain, password string) []byte {
-	ntlmHash := ntlmV2Hash(password, user, domain)
+	ntlmHash := NtlmV2Hash(password, user, domain)
 	temp := []byte{0x10, 0x20, 0x30, 0x40}
 	proof := hmacMD5(ntlmHash, challenge, temp)
 	return append(append([]byte(nil), proof...), temp...)

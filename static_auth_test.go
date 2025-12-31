@@ -70,11 +70,9 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 	}
 	assertLoginSuccess(t, ctx, baseURL, loginClient, "testuser", "dogood")
 
-
-	
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{Header: http.Header{}, RemoteAddr: "1.2.3.4:3389"}
-	key := ntlmChallengeKey(req)
+	key := NtlmChallengeKey(req)
 	auth := &StaticAuth{
 		challenges: map[string]ntlmChallengeState{
 			key: {

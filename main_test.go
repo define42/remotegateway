@@ -41,7 +41,7 @@ func TestSplitAuthHeader(t *testing.T) {
 
 func TestExtractNTLMToken(t *testing.T) {
 	token := buildTestNTLMToken(ntlmMessageTypeNegotiate)
-	decoded, err := extractNTLMToken(token)
+	decoded, err := ExtractNTLMToken(token)
 	if err != nil {
 		t.Fatalf("expected direct token to parse: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestExtractNTLMToken(t *testing.T) {
 	}
 
 	embedded := append([]byte{0x01, 0x02, 0x03}, token...)
-	decoded, err = extractNTLMToken(embedded)
+	decoded, err = ExtractNTLMToken(embedded)
 	if err != nil {
 		t.Fatalf("expected embedded token to parse: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestExtractNTLMToken(t *testing.T) {
 		t.Fatalf("expected embedded token to match original")
 	}
 
-	if _, err := extractNTLMToken([]byte("not-ntlm")); err == nil {
+	if _, err := ExtractNTLMToken([]byte("not-ntlm")); err == nil {
 		t.Fatalf("expected error for missing NTLM signature")
 	}
 }
