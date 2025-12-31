@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -6,10 +6,19 @@ import (
 )
 
 var (
-	ldapCfg = loadLDAPConfig()
+	LdapCfg = LoadLDAPConfig()
 )
 
-func loadLDAPConfig() LDAPConfig {
+type LDAPConfig struct {
+	URL            string
+	BaseDN         string
+	UserFilter     string
+	UserMailDomain string
+	StartTLS       bool
+	SkipTLSVerify  bool
+}
+
+func LoadLDAPConfig() LDAPConfig {
 	return LDAPConfig{
 		URL:            getEnv("LDAP_URL", "ldaps://ldap:389"),
 		BaseDN:         getEnv("LDAP_BASE_DN", "dc=glauth,dc=com"),

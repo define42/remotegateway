@@ -1,8 +1,9 @@
-package main
+package ldap
 
 import (
 	"crypto/tls"
 	"fmt"
+	"remotegateway/internal/config"
 	"remotegateway/internal/ntlm"
 	"remotegateway/internal/types"
 	"strings"
@@ -10,25 +11,16 @@ import (
 	"github.com/go-ldap/ldap/v3"
 )
 
-type LDAPConfig struct {
-	URL            string
-	BaseDN         string
-	UserFilter     string
-	UserMailDomain string
-	StartTLS       bool
-	SkipTLSVerify  bool
-}
-
-func ldapAuthenticateAccess(username, password string) (*types.User, error) {
-	conn, err := dialLDAP(ldapCfg)
+func LdapAuthenticateAccess(username, password string) (*types.User, error) {
+	conn, err := dialLDAP(config.LdapCfg)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
 	mail := username
-	if !strings.Contains(username, "@") && ldapCfg.UserMailDomain != "" {
-		domain := ldapCfg.UserMailDomain
+	if !strings.Contains(username, "@") && config.LdapCfg.UserMailDomain != "" {
+		domain := config.LdapCfg.UserMailDomain
 		if !strings.HasPrefix(domain, "@") {
 			domain = "@" + domain
 		}
@@ -54,10 +46,10 @@ func ldapAuthenticateAccess(username, password string) (*types.User, error) {
 		return nil, fmt.Errorf("ldap bind failed: %w", bindErr)
 	}
 
-	filter := fmt.Sprintf(ldapCfg.UserFilter, mail)
+	filter := fmt.Sprintf(config.LdapCfg.UserFilter, mail)
 	fmt.Println("filter", filter)
 	searchReq := ldap.NewSearchRequest(
-		ldapCfg.BaseDN,
+		config.LdapCfg.BaseDN,
 		ldap.ScopeWholeSubtree,
 		ldap.NeverDerefAliases, 1, 0, false,
 		filter,
@@ -76,7 +68,7 @@ func ldapAuthenticateAccess(username, password string) (*types.User, error) {
 	return &types.User{Name: username, NtlmPassword: ntlm.NtlmV2Hash(password, username, "")}, nil
 }
 
-func dialLDAP(cfg LDAPConfig) (*ldap.Conn, error) {
+func dialLDAP(cfg config.LDAPConfig) (*ldap.Conn, error) {
 
 	// #nosec G402 -- skip TLS verification if configured
 	conn, err := ldap.DialURL(cfg.URL, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}))

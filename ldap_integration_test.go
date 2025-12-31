@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"remotegateway/internal/config"
+	"remotegateway/internal/ldap"
 	"strings"
 	"testing"
 	"time"
@@ -28,9 +30,9 @@ func TestLDAPAuthenticateWithGlauthConfig(t *testing.T) {
 	os.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
 	os.Setenv("LDAP_STARTTLS", "false")
 	os.Setenv("LDAP_USER_DOMAIN", "@example.com")
-	ldapCfg = loadLDAPConfig()
+	config.LdapCfg = config.LoadLDAPConfig()
 
-	u, err := ldapAuthenticateAccess("testuser", "dogood")
+	u, err := ldap.LdapAuthenticateAccess("testuser", "dogood")
 	if err != nil {
 		t.Fatalf("unexpected auth failure: %v", err)
 	}
@@ -50,13 +52,13 @@ func TestLDAPAuthenticateJohndoeSingleNamespace(t *testing.T) {
 	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
 	t.Setenv("LDAP_STARTTLS", "false")
 	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
-	prevCfg := ldapCfg
-	ldapCfg = loadLDAPConfig()
+	prevCfg := config.LdapCfg
+	config.LdapCfg = config.LoadLDAPConfig()
 	t.Cleanup(func() {
-		ldapCfg = prevCfg
+		config.LdapCfg = prevCfg
 	})
 
-	u, err := ldapAuthenticateAccess("johndoe", "dogood")
+	u, err := ldap.LdapAuthenticateAccess("johndoe", "dogood")
 	if err != nil {
 		t.Fatalf("unexpected auth failure: %v", err)
 	}
@@ -191,10 +193,10 @@ func setupLDAPProxyServer(t *testing.T, ctx context.Context) string {
 
 	configureLDAPEnv(t, ldapURL)
 
-	prevCfg := ldapCfg
-	ldapCfg = loadLDAPConfig()
+	prevCfg := config.LdapCfg
+	config.LdapCfg = config.LoadLDAPConfig()
 	t.Cleanup(func() {
-		ldapCfg = prevCfg
+		config.LdapCfg = prevCfg
 	})
 
 	server := httptest.NewServer(getRemoteGatewayRotuer())
