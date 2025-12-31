@@ -259,3 +259,20 @@ func BootNewVM(name string, user *types.User) (vmName string, err error) {
 
 	return vmName, nil
 }
+
+func RemoveVM(name string) error {
+	conn, err := libvirt.NewConnect(LibvirtURI())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if err := DestroyExistingDomain(conn, name); err != nil {
+		return err
+	}
+	seedIso := name + "_seed.iso"
+	if err := RemoveVolumes(conn, name, seedIso); err != nil {
+		return err
+	}
+	return nil
+}

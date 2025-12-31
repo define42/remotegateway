@@ -40,4 +40,22 @@ func TestStartVM(t *testing.T) {
 	if !found {
 		t.Fatalf("Booted VM %s not found in VM list", vmName)
 	}
+
+	// Cleanup: Destroy the VM after test
+	// (In a real test, consider using defer to ensure cleanup)
+	err = virt.RemoveVM(vmName)
+	if err != nil {
+		t.Fatalf("Failed to destroy VM %s: %v", vmName, err)
+	}
+
+	// Verify that the VM has been removed
+	vms, err = virt.ListVMs("")
+	if err != nil {
+		t.Fatalf("Failed to list VMs after deletion: %v", err)
+	}
+	for _, v := range vms {
+		if v.Name == vmName {
+			t.Fatalf("VM %s still found in VM list after deletion", vmName)
+		}
+	}
 }

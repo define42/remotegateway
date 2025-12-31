@@ -30,7 +30,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
-	"libvirt.org/go/libvirt"
 )
 
 /*
@@ -402,7 +401,7 @@ func registerAPI(api huma.API) {
 					return
 				}
 
-				if err := removeVM(name); err != nil {
+				if err := virt.RemoveVM(name); err != nil {
 					log.Printf("remove vm %q failed: %v", name, err)
 					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
 						OK:    false,
@@ -440,23 +439,6 @@ func validateVMName(name string) (string, error) {
 		return "", fmt.Errorf("VM name may only use letters, numbers, '-' or '_'.")
 	}
 	return name, nil
-}
-
-func removeVM(name string) error {
-	conn, err := libvirt.NewConnect(virt.LibvirtURI())
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	if err := virt.DestroyExistingDomain(conn, name); err != nil {
-		return err
-	}
-	seedIso := name + "_seed.iso"
-	if err := virt.RemoveVolumes(conn, name, seedIso); err != nil {
-		return err
-	}
-	return nil
 }
 
 func main() {
