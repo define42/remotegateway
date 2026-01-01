@@ -50,7 +50,9 @@ func UbuntuDomain(name, seedIso string) string {
 </interface>
 
     <!-- Graphics -->
-    <graphics type='spice' autoport='yes'/>
+    <graphics type="vnc" autoport="no">
+    <listen type="none"/>
+    </graphics>
 
     <!-- Video -->
     <video>
