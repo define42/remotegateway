@@ -37,6 +37,7 @@ type State = {
 };
 
 const DEFAULT_VM_ERROR = "Unable to load virtual machines right now.";
+const AUTO_REFRESH_INTERVAL_MS = 10000;
 
 const state: State = {
   vms: [],
@@ -47,6 +48,26 @@ const state: State = {
   loading: true,
   busy: false,
 };
+
+let loadInFlight = false;
+
+function isValidIPv4(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const parts = trimmed.split(".");
+  if (parts.length !== 4) {
+    return false;
+  }
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part)) {
+      return false;
+    }
+    const num = Number(part);
+    return num >= 0 && num <= 255;
+  });
+}
 
 function bootstrap(): void {
   const root = document.getElementById("app");
@@ -190,32 +211,40 @@ function bootstrap(): void {
       diskCell.textContent = vm.volumeGB ? `${vm.volumeGB} GB` : "n/a";
       row.appendChild(diskCell);
 
+      const hasIPv4 = vm.ip ? isValidIPv4(vm.ip) : false;
       const actionCell = document.createElement("td");
       const actions = document.createElement("div");
       actions.className = "vm-actions";
 
-      if (vm.rdpHost) {
-        const download = document.createElement("a");
-        download.className = "vm-download";
-        download.href = `/api/${state.filename}?target=${encodeURIComponent(vm.rdpHost)}`;
-        download.textContent = "Download";
-        actions.appendChild(download);
+      if (hasIPv4) {
+        if (vm.rdpHost) {
+          const download = document.createElement("a");
+          download.className = "vm-download";
+          download.href = `/api/${state.filename}?target=${encodeURIComponent(vm.rdpHost)}`;
+          download.textContent = "Download";
+          actions.appendChild(download);
+        } else {
+          const disabled = document.createElement("span");
+          disabled.className = "vm-disabled";
+          disabled.textContent = "n/a";
+          actions.appendChild(disabled);
+        }
+
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "vm-remove";
+        removeButton.textContent = "Remove";
+        removeButton.disabled = state.busy;
+        removeButton.addEventListener("click", () => {
+          void removeVM(vm.name);
+        });
+        actions.appendChild(removeButton);
       } else {
         const disabled = document.createElement("span");
         disabled.className = "vm-disabled";
-        disabled.textContent = "n/a";
+        disabled.textContent = "Waiting for IP";
         actions.appendChild(disabled);
       }
-
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "vm-remove";
-      removeButton.textContent = "Remove";
-      removeButton.disabled = state.busy;
-      removeButton.addEventListener("click", () => {
-        void removeVM(vm.name);
-      });
-      actions.appendChild(removeButton);
 
       actionCell.appendChild(actions);
       row.appendChild(actionCell);
@@ -304,32 +333,44 @@ function bootstrap(): void {
     return { ok: true, data: payload as T };
   }
 
-  async function loadVMs(): Promise<void> {
-    state.loading = true;
-    state.vmError = "";
-    renderVMList();
-
-    const result = await requestJSON<DashboardDataResponse>("/api/dashboard/data");
-    if (!result) {
+  async function loadVMs(options: { showLoading?: boolean } = {}): Promise<void> {
+    if (loadInFlight) {
       return;
     }
 
-    if (!result.ok || !result.data) {
-      state.vmError = result.error || DEFAULT_VM_ERROR;
+    loadInFlight = true;
+    const showLoading = options.showLoading ?? state.vms.length === 0;
+    if (showLoading) {
+      state.loading = true;
+      state.vmError = "";
+      renderVMList();
+    }
+
+    try {
+      const result = await requestJSON<DashboardDataResponse>("/api/dashboard/data");
+      if (!result) {
+        return;
+      }
+
+      if (!result.ok || !result.data) {
+        state.vmError = result.error || DEFAULT_VM_ERROR;
+        return;
+      }
+
+      state.vms = result.data.vms || [];
+      if (result.data.filename) {
+        state.filename = result.data.filename;
+      }
+      if (result.data.error) {
+        state.vmError = result.data.error;
+      } else {
+        state.vmError = "";
+      }
+    } finally {
       state.loading = false;
       renderVMList();
-      return;
+      loadInFlight = false;
     }
-
-    state.vms = result.data.vms || [];
-    if (result.data.filename) {
-      state.filename = result.data.filename;
-    }
-    if (result.data.error) {
-      state.vmError = result.data.error;
-    }
-    state.loading = false;
-    renderVMList();
   }
 
   async function createVM(name: string): Promise<void> {
@@ -423,6 +464,23 @@ function bootstrap(): void {
   renderAction();
   renderVMList();
   void loadVMs();
+
+  const refreshHandle = window.setInterval(() => {
+    if (document.hidden || state.busy) {
+      return;
+    }
+    void loadVMs({ showLoading: false });
+  }, AUTO_REFRESH_INTERVAL_MS);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      void loadVMs({ showLoading: false });
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    window.clearInterval(refreshHandle);
+  });
 }
 
 bootstrap();
