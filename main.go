@@ -376,28 +376,8 @@ func registerAPI(api huma.API, sessionManager *session.Manager) {
 			Body: func(ctx huma.Context) {
 				req, w := humachi.Unwrap(ctx)
 
-				if err := req.ParseForm(); err != nil {
-					log.Printf("dashboard remove form parse failed: %v", err)
-					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
-						OK:    false,
-						Error: "Invalid form submission.",
-					})
-					return
-				}
-
-				name := strings.TrimSpace(req.FormValue("vm_name"))
-				if name == "" {
-					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
-						OK:    false,
-						Error: "VM name is required.",
-					})
-					return
-				}
-				if len(name) > 128 {
-					writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
-						OK:    false,
-						Error: "VM name is too long.",
-					})
+				name, err := parseDashboardVMName(req)
+				if handleDashboardFormError(w, "dashboard remove", err) {
 					return
 				}
 
@@ -413,6 +393,93 @@ func registerAPI(api huma.API, sessionManager *session.Manager) {
 				writeJSON(w, http.StatusOK, dashboardActionResponse{
 					OK:      true,
 					Message: "VM removed.",
+				})
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+
+	huma.Post(group, "/dashboard/start", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+
+				name, err := parseDashboardVMName(req)
+				if handleDashboardFormError(w, "dashboard start", err) {
+					return
+				}
+
+				if err := virt.StartExistingVM(name); err != nil {
+					log.Printf("start vm %q failed: %v", name, err)
+					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
+						OK:    false,
+						Error: "Failed to start VM.",
+					})
+					return
+				}
+
+				writeJSON(w, http.StatusOK, dashboardActionResponse{
+					OK:      true,
+					Message: "VM start requested.",
+				})
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+
+	huma.Post(group, "/dashboard/restart", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+
+				name, err := parseDashboardVMName(req)
+				if handleDashboardFormError(w, "dashboard restart", err) {
+					return
+				}
+
+				if err := virt.RestartVM(name); err != nil {
+					log.Printf("restart vm %q failed: %v", name, err)
+					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
+						OK:    false,
+						Error: "Failed to restart VM.",
+					})
+					return
+				}
+
+				writeJSON(w, http.StatusOK, dashboardActionResponse{
+					OK:      true,
+					Message: "VM restart requested.",
+				})
+			},
+		}, nil
+	}, func(op *huma.Operation) {
+		op.Hidden = true
+	})
+
+	huma.Post(group, "/dashboard/shutdown", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{
+			Body: func(ctx huma.Context) {
+				req, w := humachi.Unwrap(ctx)
+
+				name, err := parseDashboardVMName(req)
+				if handleDashboardFormError(w, "dashboard shutdown", err) {
+					return
+				}
+
+				if err := virt.ShutdownVM(name); err != nil {
+					log.Printf("shutdown vm %q failed: %v", name, err)
+					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
+						OK:    false,
+						Error: "Failed to shutdown VM.",
+					})
+					return
+				}
+
+				writeJSON(w, http.StatusOK, dashboardActionResponse{
+					OK:      true,
+					Message: "VM shutdown requested.",
 				})
 			},
 		}, nil
@@ -439,6 +506,41 @@ func validateVMName(name string) (string, error) {
 		return "", fmt.Errorf("VM name may only use letters, numbers, '-' or '_'.")
 	}
 	return name, nil
+}
+
+var errInvalidDashboardForm = errors.New("invalid form submission")
+
+func parseDashboardVMName(req *http.Request) (string, error) {
+	if err := req.ParseForm(); err != nil {
+		return "", fmt.Errorf("%w: %v", errInvalidDashboardForm, err)
+	}
+	name := strings.TrimSpace(req.FormValue("vm_name"))
+	if name == "" {
+		return "", fmt.Errorf("VM name is required.")
+	}
+	if len(name) > 128 {
+		return "", fmt.Errorf("VM name is too long.")
+	}
+	return name, nil
+}
+
+func handleDashboardFormError(w http.ResponseWriter, action string, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errInvalidDashboardForm) {
+		log.Printf("%s form parse failed: %v", action, err)
+		writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+			OK:    false,
+			Error: "Invalid form submission.",
+		})
+		return true
+	}
+	writeJSON(w, http.StatusBadRequest, dashboardActionResponse{
+		OK:    false,
+		Error: err.Error(),
+	})
+	return true
 }
 
 func main() {

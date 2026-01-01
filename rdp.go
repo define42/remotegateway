@@ -135,7 +135,8 @@ const indexHTML = `<!doctype html>
         cursor: pointer;
       }
       .vm-form button:disabled,
-      .vm-remove:disabled {
+      .vm-remove:disabled,
+      .vm-power:disabled {
         opacity: 0.6;
         cursor: not-allowed;
       }
@@ -205,6 +206,40 @@ const indexHTML = `<!doctype html>
         flex-wrap: wrap;
         gap: 8px;
         align-items: center;
+      }
+      .vm-power {
+        border: 1px solid rgba(148,163,184,0.5);
+        background: transparent;
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .vm-power:hover {
+        background: rgba(148,163,184,0.12);
+      }
+      .vm-start {
+        border-color: rgba(34,197,94,0.6);
+        color: #bbf7d0;
+      }
+      .vm-start:hover {
+        background: rgba(34,197,94,0.12);
+      }
+      .vm-restart {
+        border-color: rgba(250,204,21,0.6);
+        color: #fde68a;
+      }
+      .vm-restart:hover {
+        background: rgba(250,204,21,0.12);
+      }
+      .vm-shutdown {
+        border-color: rgba(251,146,60,0.6);
+        color: #fed7aa;
+      }
+      .vm-shutdown:hover {
+        background: rgba(251,146,60,0.12);
       }
       .vm-remove {
         border: 1px solid rgba(248,113,113,0.6);

@@ -28,6 +28,10 @@ function isValidIPv4(value) {
         return num >= 0 && num <= 255;
     });
 }
+function isActiveState(state) {
+    const normalized = state.trim().toLowerCase();
+    return normalized === "running" || normalized === "paused" || normalized === "suspended";
+}
 function bootstrap() {
     const root = document.getElementById("app");
     if (!root) {
@@ -151,9 +155,38 @@ function bootstrap() {
             diskCell.textContent = vm.volumeGB ? `${vm.volumeGB} GB` : "n/a";
             row.appendChild(diskCell);
             const hasIPv4 = vm.ip ? isValidIPv4(vm.ip) : false;
+            const hasName = vm.name.trim() !== "";
+            const isActive = isActiveState(vm.state || "");
             const actionCell = document.createElement("td");
             const actions = document.createElement("div");
             actions.className = "vm-actions";
+            const startButton = document.createElement("button");
+            startButton.type = "button";
+            startButton.className = "vm-power vm-start";
+            startButton.textContent = "Start";
+            startButton.disabled = state.busy || !hasName || isActive;
+            startButton.addEventListener("click", () => {
+                void startVM(vm.name);
+            });
+            actions.appendChild(startButton);
+            const restartButton = document.createElement("button");
+            restartButton.type = "button";
+            restartButton.className = "vm-power vm-restart";
+            restartButton.textContent = "Restart";
+            restartButton.disabled = state.busy || !hasName || !isActive;
+            restartButton.addEventListener("click", () => {
+                void restartVM(vm.name);
+            });
+            actions.appendChild(restartButton);
+            const shutdownButton = document.createElement("button");
+            shutdownButton.type = "button";
+            shutdownButton.className = "vm-power vm-shutdown";
+            shutdownButton.textContent = "Shutdown";
+            shutdownButton.disabled = state.busy || !hasName || !isActive;
+            shutdownButton.addEventListener("click", () => {
+                void shutdownVM(vm.name);
+            });
+            actions.appendChild(shutdownButton);
             if (hasIPv4) {
                 if (vm.rdpHost) {
                     const download = document.createElement("a");
@@ -172,7 +205,7 @@ function bootstrap() {
                 removeButton.type = "button";
                 removeButton.className = "vm-remove";
                 removeButton.textContent = "Remove";
-                removeButton.disabled = state.busy;
+                removeButton.disabled = state.busy || !hasName;
                 removeButton.addEventListener("click", () => {
                     void removeVM(vm.name);
                 });
@@ -331,7 +364,7 @@ function bootstrap() {
             setBusy(false);
         }
     }
-    async function removeVM(name) {
+    async function actionVM(name, url, successMessage, failureMessage) {
         if (state.busy) {
             return;
         }
@@ -339,7 +372,7 @@ function bootstrap() {
         setBusy(true);
         try {
             const body = new URLSearchParams({ vm_name: name });
-            const result = await requestJSON("/api/dashboard/remove", {
+            const result = await requestJSON(url, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",
@@ -350,19 +383,31 @@ function bootstrap() {
                 return;
             }
             if (!result.ok || !result.data) {
-                setActionError(result.error || "Failed to remove VM.");
+                setActionError(result.error || failureMessage);
                 return;
             }
             if (!result.data.ok) {
-                setActionError(result.data.error || "Failed to remove VM.");
+                setActionError(result.data.error || failureMessage);
                 return;
             }
-            setActionMessage(result.data.message || "VM removed.");
+            setActionMessage(result.data.message || successMessage);
             await loadVMs();
         }
         finally {
             setBusy(false);
         }
+    }
+    async function removeVM(name) {
+        await actionVM(name, "/api/dashboard/remove", "VM removed.", "Failed to remove VM.");
+    }
+    async function startVM(name) {
+        await actionVM(name, "/api/dashboard/start", "VM start requested.", "Failed to start VM.");
+    }
+    async function restartVM(name) {
+        await actionVM(name, "/api/dashboard/restart", "VM restart requested.", "Failed to restart VM.");
+    }
+    async function shutdownVM(name) {
+        await actionVM(name, "/api/dashboard/shutdown", "VM shutdown requested.", "Failed to shutdown VM.");
     }
     formEl.addEventListener("submit", (event) => {
         event.preventDefault();
