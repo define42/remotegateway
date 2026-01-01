@@ -236,7 +236,7 @@ func getRemoteGatewayRotuer(sessionManager *session.Manager) http.Handler {
 		}
 	})
 
-	apiCfg := huma.DefaultConfig("ContainerVault", "1.0.0")
+	apiCfg := huma.DefaultConfig("RemoteGateway", "1.0.0")
 	apiCfg.OpenAPIPath = ""
 	apiCfg.DocsPath = ""
 	apiCfg.SchemasPath = ""

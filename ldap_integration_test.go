@@ -77,7 +77,7 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	accessCases := []requestCase{
 		{name: "health", method: http.MethodGet, path: "/api/health", wantStatus: http.StatusOK, wantBodyContains: []string{"ok"}},
-		{name: "login page", method: http.MethodGet, path: "/login", wantStatus: http.StatusOK, wantBodyContains: []string{"ContainerVault"}},
+		{name: "login page", method: http.MethodGet, path: "/login", wantStatus: http.StatusOK, wantBodyContains: []string{"RemoteGateway"}},
 	}
 	assertRequestCases(t, ctx, baseURL, client, accessCases)
 
