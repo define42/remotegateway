@@ -18,11 +18,11 @@ type SettingType struct {
 func NewSettingType(print bool) *SettingsType {
 	s := &SettingsType{m: make(map[string]SettingType)}
 
-	s.Set(ACME_SERVER, "ACME server url", "")
+	//s.Set(ACME_SERVER, "ACME server url", "")
 	s.Set(ACME_DOMAINS, "Comma separated domains thats used with ACME", "")
-	s.Set(LISTEN_ADDR, "Server listen address, only if not using ACME", ":8080")
-	s.Set(ACME_DATA_DIR, "ACME data directory", "/data/acme/")
-	s.Set(ACME_CA_DIR, "ACME CA certificates directory", "/data/acme/ca/")
+	//s.Set(LISTEN_ADDR, "Server listen address, only if not using ACME", ":8080")
+	//s.Set(ACME_DATA_DIR, "ACME data directory", "/data/acme/")
+	//s.Set(ACME_CA_DIR, "ACME CA certificates directory", "/data/acme/ca/")
 	s.Set(LDAP_URL, "LDAP server url", "ldaps://ldap:389")
 	s.Set(LDAP_BASE_DN, "LDAP base DN", "dc=glauth,dc=com")
 	s.Set(LDAP_USER_FILTER, "LDAP user filter", "(mail=%s)")
@@ -35,9 +35,13 @@ func NewSettingType(print bool) *SettingsType {
 
 		table.Header("KEY", "Description", "value")
 		for key, setting := range s.m {
-			table.Append([]string{key, setting.Description, setting.Value})
+			if err := table.Append([]string{key, setting.Description, setting.Value}); err != nil {
+				panic(err)
+			}
 		}
-		table.Render()
+		if err := table.Render(); err != nil {
+			panic(err)
+		}
 	}
 	return s
 }
@@ -63,11 +67,11 @@ func (s *SettingsType) Set(id string, description string, defaultValue string) {
 }
 
 const (
-	ACME_SERVER          = "ACME_SERVER"
-	ACME_DOMAINS         = "ACME_DOMAINS"
-	LISTEN_ADDR          = "LISTEN_ADDR"
-	ACME_DATA_DIR        = "ACME_DATA_DIR"
-	ACME_CA_DIR          = "ACME_CA_DIR"
+	//ACME_SERVER          = "ACME_SERVER"
+	ACME_DOMAINS = "ACME_DOMAINS"
+	//LISTEN_ADDR          = "LISTEN_ADDR"
+	//ACME_DATA_DIR        = "ACME_DATA_DIR"
+	//ACME_CA_DIR          = "ACME_CA_DIR"
 	LDAP_URL             = "LDAP_URL"
 	LDAP_BASE_DN         = "LDAP_BASE_DN"
 	LDAP_USER_FILTER     = "LDAP_USER_FILTER"

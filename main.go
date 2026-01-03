@@ -28,6 +28,7 @@ import (
 	"remotegateway/internal/session"
 	"remotegateway/internal/virt"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -549,33 +550,42 @@ func main() {
 	//	fmt.Println(virt.ListVMs())
 
 	sessionManager := session.NewManager()
-	settings := config.NewSettingType(false)
+	settings := config.NewSettingType(true)
 	mux := getRemoteGatewayRotuer(sessionManager, settings)
 
-	srv := &http.Server{
-		Addr:      ":8443",
-		Handler:   mux,
-		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+	if settings.Has(config.ACME_DOMAINS) {
 
-		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+		domains := settings.Get(config.ACME_DOMAINS)
 
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  2 * time.Minute,
+		domainList := strings.Split(domains, ",")
+		log.Fatal(certmagic.HTTPS(domainList, mux))
+	} else {
 
-		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			_ = c.SetDeadline(time.Now().Add(8 * time.Hour))
-			return ctx
-		},
+		srv := &http.Server{
+			Addr:      ":8443",
+			Handler:   mux,
+			TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+
+			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  2 * time.Minute,
+
+			ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+				_ = c.SetDeadline(time.Now().Add(8 * time.Hour))
+				return ctx
+			},
+		}
+
+		certPath := "certs/server.crt"
+		keyPath := "certs/server.key"
+
+		if err := ensureTLSCert(certPath, keyPath); err != nil {
+			log.Fatalf("failed to ensure TLS certs: %v", err)
+		}
+
+		log.Println("Starting RDP Gateway with LDAP auth on :443")
+		log.Fatal(srv.ListenAndServeTLS(certPath, keyPath))
 	}
-
-	certPath := "certs/server.crt"
-	keyPath := "certs/server.key"
-
-	if err := ensureTLSCert(certPath, keyPath); err != nil {
-		log.Fatalf("failed to ensure TLS certs: %v", err)
-	}
-
-	log.Println("Starting RDP Gateway with LDAP auth on :443")
-	log.Fatal(srv.ListenAndServeTLS(certPath, keyPath))
 }
