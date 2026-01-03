@@ -257,6 +257,16 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 		if err != nil {
 			var challenge AuthChallenge
 			if errors.As(err, &challenge) {
+				scheme, _ := splitAuthHeader(challenge.Header)
+				log.Printf(
+					"Gateway auth challenge: scheme=%s remote=%s client_ip=%s method=%s path=%s conn_id=%s",
+					scheme,
+					r.RemoteAddr,
+					common.GetClientIp(r.Context()),
+					r.Method,
+					r.URL.Path,
+					r.Header.Get("Rdg-Connection-Id"),
+				)
 				w.Header().Add("WWW-Authenticate", challenge.Header)
 				w.Header().Add("WWW-Authenticate", `Basic realm="rdpgw"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
