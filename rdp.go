@@ -74,10 +74,10 @@ func rdpFileContent(gatewayHost, targetHost string) string {
 	write("full address:s:" + targetHost)
 	write("gatewayhostname:s:" + gatewayHost)
 	write("gatewayusagemethod:i:2")
-	write("gatewaycredentialssource:i:4")
+	write("gatewaycredentialssource:i:0")
 	write("gatewayprofileusagemethod:i:1")
 	write("promptcredentialonce:i:0")
 	write("authentication level:i:2")
-	write("use redirection server name:i:1")
+	//write("use redirection server name:i:1")
 	return b.String()
 }

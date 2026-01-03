@@ -265,7 +265,7 @@ func InitVirt(settings *config.SettingsType) error {
 
 func BootNewVM(name string, user *types.User, settings *config.SettingsType) (vmName string, err error) {
 
-	vmName = user.GetName() + "_" + name
+	vmName = user.GetName() + "-" + name
 
 	seedIso := vmName + "_seed.iso"
 
