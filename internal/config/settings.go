@@ -21,8 +21,9 @@ func NewSettingType(print bool) *SettingsType {
 	//s.Set(ACME_SERVER, "ACME server url", "")
 	s.Set(ACME_DOMAINS, "Comma separated domains thats used with ACME", "")
 	//s.Set(LISTEN_ADDR, "Server listen address, only if not using ACME", ":8080")
-	//s.Set(ACME_DATA_DIR, "ACME data directory", "/data/acme/")
+	s.Set(ACME_DATA_DIR, "ACME data directory", "/data/acme/")
 	//s.Set(ACME_CA_DIR, "ACME CA certificates directory", "/data/acme/ca/")
+	s.Set(VDI_IMAGE_DIR, "Directory for VDI images", "/data/vdiimage/")
 	s.Set(LDAP_URL, "LDAP server url", "ldaps://ldap:389")
 	s.Set(LDAP_BASE_DN, "LDAP base DN", "dc=glauth,dc=com")
 	s.Set(LDAP_USER_FILTER, "LDAP user filter", "(mail=%s)")
@@ -70,7 +71,7 @@ const (
 	//ACME_SERVER          = "ACME_SERVER"
 	ACME_DOMAINS = "ACME_DOMAINS"
 	//LISTEN_ADDR          = "LISTEN_ADDR"
-	//ACME_DATA_DIR        = "ACME_DATA_DIR"
+	ACME_DATA_DIR = "ACME_DATA_DIR"
 	//ACME_CA_DIR          = "ACME_CA_DIR"
 	LDAP_URL             = "LDAP_URL"
 	LDAP_BASE_DN         = "LDAP_BASE_DN"
@@ -78,4 +79,5 @@ const (
 	LDAP_USER_DOMAIN     = "LDAP_USER_DOMAIN"
 	LDAP_STARTTLS        = "LDAP_STARTTLS"
 	LDAP_SKIP_TLS_VERIFY = "LDAP_SKIP_TLS_VERIFY"
+	VDI_IMAGE_DIR        = "VDI_IMAGE_DIR"
 )

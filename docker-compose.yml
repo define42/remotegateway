@@ -7,6 +7,7 @@ services:
       - "8443:8443"
     volumes:
       - /var/run/libvirt:/var/run/libvirt
+      - /data/:/data/
     networks:
       virbr0-net:
         ipv4_address: 192.168.122.254

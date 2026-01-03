@@ -243,7 +243,7 @@ func getRemoteGatewayRotuer(sessionManager *session.Manager, settings *config.Se
 	apiCfg.DocsPath = ""
 	apiCfg.SchemasPath = ""
 	api := humachi.New(router, apiCfg)
-	registerAPI(api, sessionManager)
+	registerAPI(api, sessionManager, settings)
 
 	//mux.Handle("/rdgateway/", gatewayHandler)
 	gatewayHandler := gatewayRouter(sessionManager)
@@ -264,7 +264,7 @@ func getRemoteGatewayRotuer(sessionManager *session.Manager, settings *config.Se
 
 }
 
-func registerAPI(api huma.API, sessionManager *session.Manager) {
+func registerAPI(api huma.API, sessionManager *session.Manager, settings *config.SettingsType) {
 	group := huma.NewGroup(api, "/api")
 	group.UseMiddleware(sessionManager.SessionMiddleware())
 	huma.Get(group, "/rdpgw.rdp", func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
@@ -354,7 +354,7 @@ func registerAPI(api huma.API, sessionManager *session.Manager) {
 					return
 				}
 
-				if vmName, err := virt.BootNewVM(name, user); err != nil {
+				if vmName, err := virt.BootNewVM(name, user, settings); err != nil {
 					log.Printf("boot new vm %q failed: %v", vmName, err)
 					writeJSON(w, http.StatusInternalServerError, dashboardActionResponse{
 						OK:    false,
@@ -551,11 +551,25 @@ func main() {
 
 	sessionManager := session.NewManager()
 	settings := config.NewSettingType(true)
+
+	if err := virt.InitVirt(settings); err != nil {
+		log.Fatalf("Failed to initialize virtualization: %v", err)
+	}
+
 	mux := getRemoteGatewayRotuer(sessionManager, settings)
 
 	if settings.Has(config.ACME_DOMAINS) {
 
 		domains := settings.Get(config.ACME_DOMAINS)
+
+		if settings.Has(config.ACME_DATA_DIR) {
+			dataDir := settings.Get(config.ACME_DATA_DIR)
+			if err := os.MkdirAll(dataDir, 0755); err != nil {
+				log.Fatalf("Failed to create ACME data directory: %v", err)
+			}
+
+			certmagic.Default.Storage = &certmagic.FileStorage{Path: filepath.Clean(dataDir)}
+		}
 
 		domainList := strings.Split(domains, ",")
 		log.Fatal(certmagic.HTTPS(domainList, mux))

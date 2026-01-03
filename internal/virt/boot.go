@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"remotegateway/internal/config"
 	"remotegateway/internal/types"
 
 	"libvirt.org/go/libvirt"
@@ -218,19 +219,57 @@ func DestroyExistingDomain(conn *libvirt.Connect, vmName string) error {
 	return nil
 }
 
-func BootNewVM(name string, user *types.User) (vmName string, err error) {
+func InitVirt(settings *config.SettingsType) error {
+	conn, err := libvirt.NewConnect(LibvirtURI())
+	if err != nil {
+		return fmt.Errorf("Failed to connect to libvirt: %v", err)
+	}
+	defer conn.Close()
+
+	pool, err := conn.LookupStoragePoolByName(DEFAULT_VIRT_STORAGE)
+	if err != nil {
+		return fmt.Errorf("Failed to lookup storage pool %s: %v", DEFAULT_VIRT_STORAGE, err)
+	}
+	defer func() {
+		_ = pool.Free()
+	}()
+
+	active, err := pool.IsActive()
+	if err != nil {
+		return fmt.Errorf("Failed to check if storage pool %s is active: %v", DEFAULT_VIRT_STORAGE, err)
+	}
+	if !active {
+		if err := pool.Create(0); err != nil {
+			return fmt.Errorf("Failed to create storage pool %s: %v", DEFAULT_VIRT_STORAGE, err)
+		}
+		log.Printf("Storage pool %s started", DEFAULT_VIRT_STORAGE)
+	}
+
+	baseImage := settings.Get(config.VDI_IMAGE_DIR) + "/" + BASE_IMAGE
+
+	// check image exists
+	if _, err := os.Stat(baseImage); os.IsNotExist(err) {
+
+		if err := os.MkdirAll(settings.Get(config.VDI_IMAGE_DIR), 0755); err != nil {
+			return fmt.Errorf("Failed to create image directory: %v", err)
+		}
+
+		log.Printf("Base image %s not found, downloading...", BASE_IMAGE_URL)
+		if err := downloadWithProgress(BASE_IMAGE_URL, baseImage); err != nil {
+			return fmt.Errorf("Failed to download base image: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func BootNewVM(name string, user *types.User, settings *config.SettingsType) (vmName string, err error) {
 
 	vmName = user.GetName() + "_" + name
 
 	seedIso := vmName + "_seed.iso"
 
-	// check image exists
-	if _, err := os.Stat(BASE_IMAGE); os.IsNotExist(err) {
-		log.Printf("Base image %s not found, downloading...", BASE_IMAGE)
-		if err := downloadWithProgress(BASE_IMAGE_URL, BASE_IMAGE); err != nil {
-			return vmName, err
-		}
-	}
+	baseImage := settings.Get(config.VDI_IMAGE_DIR) + "/" + BASE_IMAGE
 
 	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {
@@ -245,7 +284,7 @@ func BootNewVM(name string, user *types.User) (vmName string, err error) {
 		return vmName, fmt.Errorf("Failed to remove existing volumes: %v", err)
 	}
 
-	if err := CopyAndResizeVolume(conn, vmName, BASE_IMAGE, 40*1024*1024*1024); err != nil {
+	if err := CopyAndResizeVolume(conn, vmName, baseImage, 40*1024*1024*1024); err != nil {
 		return vmName, fmt.Errorf("Failed to copy and resize base image: %v", err)
 	}
 
