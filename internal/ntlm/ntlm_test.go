@@ -123,7 +123,8 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 
 func TestBuildNTLMChallengeMessage(t *testing.T) {
 	challenge := []byte{0, 1, 2, 3, 4, 5, 6, 7}
-	msg, err := buildNTLMChallengeMessage(challenge, ntlmTargetName)
+	flags := ntlmDefaultFlags | ntlmNegotiateTargetInfo
+	msg, err := buildNTLMChallengeMessage(challenge, ntlmTargetName, &flags)
 	if err != nil {
 		t.Fatalf("expected build to succeed: %v", err)
 	}
@@ -148,24 +149,36 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected target info: %v", err)
 	}
-	if len(targetInfo) < 16 {
-		t.Fatalf("expected target info length >= 16, got %d", len(targetInfo))
+	if len(targetInfo) == 0 {
+		t.Fatalf("expected target info to be present")
 	}
-	if got := binary.LittleEndian.Uint16(targetInfo[0:2]); got != ntlmAvIDMsvAvTimestamp {
-		t.Fatalf("expected timestamp AV ID, got %d", got)
+	foundTimestamp := false
+	for i := 0; i+4 <= len(targetInfo); {
+		id := binary.LittleEndian.Uint16(targetInfo[i : i+2])
+		l := binary.LittleEndian.Uint16(targetInfo[i+2 : i+4])
+		i += 4
+		if id == ntlmAvIDMsvAvEOL {
+			if l != 0 {
+				t.Fatalf("expected EOL length 0, got %d", l)
+			}
+			break
+		}
+		if i+int(l) > len(targetInfo) {
+			t.Fatalf("target info AV length %d exceeds buffer", l)
+		}
+		if id == ntlmAvIDMsvAvTimestamp {
+			if l != 8 {
+				t.Fatalf("expected timestamp length 8, got %d", l)
+			}
+			foundTimestamp = true
+		}
+		i += int(l)
 	}
-	if got := binary.LittleEndian.Uint16(targetInfo[2:4]); got != 8 {
-		t.Fatalf("expected timestamp length 8, got %d", got)
-	}
-	end := targetInfo[len(targetInfo)-4:]
-	if got := binary.LittleEndian.Uint16(end[0:2]); got != ntlmAvIDMsvAvEOL {
-		t.Fatalf("expected EOL AV ID, got %d", got)
-	}
-	if got := binary.LittleEndian.Uint16(end[2:4]); got != 0 {
-		t.Fatalf("expected EOL length 0, got %d", got)
+	if !foundTimestamp {
+		t.Fatalf("expected timestamp AV pair")
 	}
 
-	if _, err := buildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName); err == nil {
+	if _, err := buildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName, nil); err == nil {
 		t.Fatalf("expected error for invalid challenge length")
 	}
 }

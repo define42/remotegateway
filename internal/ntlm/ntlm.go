@@ -18,22 +18,63 @@ import (
 const (
 	ntlmSignature = "NTLMSSP\x00"
 
-	ntlmMessageTypeNegotiate     uint32 = 1
-	ntlmMessageTypeChallenge     uint32 = 2
-	ntlmMessageTypeAuthenticate  uint32 = 3
-	ntlmNegotiateUnicode         uint32 = 1 << 0
-	ntlmNegotiateRequestTarget   uint32 = 1 << 2
-	ntlmNegotiateNTLM            uint32 = 1 << 9
-	ntlmNegotiateExtendedSession uint32 = 1 << 19
-	ntlmNegotiateTargetInfo      uint32 = 1 << 23
-	ntlmChallengeFlags                  = ntlmNegotiateUnicode | ntlmNegotiateNTLM | ntlmNegotiateRequestTarget | ntlmNegotiateExtendedSession | ntlmNegotiateTargetInfo
-	ntlmTargetName                      = "RDPGW"
-	ntlmChallengeTTL                    = 2 * time.Minute
+	ntlmMessageTypeNegotiate      uint32 = 1
+	ntlmMessageTypeChallenge      uint32 = 2
+	ntlmMessageTypeAuthenticate   uint32 = 3
+	ntlmNegotiateUnicode          uint32 = 1 << 0
+	ntlmNegotiateOem              uint32 = 1 << 1
+	ntlmNegotiateRequestTarget    uint32 = 1 << 2
+	ntlmNegotiateSign             uint32 = 1 << 4
+	ntlmNegotiateSeal             uint32 = 1 << 5
+	ntlmNegotiateDatagram         uint32 = 1 << 6
+	ntlmNegotiateLmKey            uint32 = 1 << 7
+	ntlmNegotiateNTLM             uint32 = 1 << 9
+	ntlmNegotiateAlwaysSign       uint32 = 1 << 15
+	ntlmNegotiateTargetTypeDomain uint32 = 1 << 16
+	ntlmNegotiateTargetTypeServer uint32 = 1 << 17
+	ntlmNegotiateExtendedSession  uint32 = 1 << 19
+	ntlmNegotiateIdentify         uint32 = 1 << 20
+	ntlmNegotiateNonNtSessionKey  uint32 = 1 << 22
+	ntlmNegotiateTargetInfo       uint32 = 1 << 23
+	ntlmNegotiateVersion          uint32 = 1 << 25
+	ntlmNegotiate128              uint32 = 1 << 29
+	ntlmNegotiateKeyExch          uint32 = 1 << 30
+	ntlmNegotiate56               uint32 = 1 << 31
+
+	ntlmSupportedFlags = ntlmNegotiateUnicode |
+		ntlmNegotiateOem |
+		ntlmNegotiateRequestTarget |
+		ntlmNegotiateSign |
+		ntlmNegotiateSeal |
+		ntlmNegotiateDatagram |
+		ntlmNegotiateLmKey |
+		ntlmNegotiateNTLM |
+		ntlmNegotiateAlwaysSign |
+		ntlmNegotiateTargetTypeDomain |
+		ntlmNegotiateTargetTypeServer |
+		ntlmNegotiateExtendedSession |
+		ntlmNegotiateIdentify |
+		ntlmNegotiateNonNtSessionKey |
+		ntlmNegotiateTargetInfo |
+		ntlmNegotiate128 |
+		ntlmNegotiateKeyExch |
+		ntlmNegotiate56
+	ntlmDefaultFlags = ntlmNegotiateUnicode |
+		ntlmNegotiateNTLM |
+		ntlmNegotiateRequestTarget |
+		ntlmNegotiateExtendedSession
+	ntlmTargetName   = "RDPGW"
+	ntlmChallengeTTL = 2 * time.Minute
 )
 
 const (
-	ntlmAvIDMsvAvEOL       uint16 = 0
-	ntlmAvIDMsvAvTimestamp uint16 = 7
+	ntlmAvIDMsvAvEOL             uint16 = 0
+	ntlmAvIDMsvAvNbComputerName  uint16 = 1
+	ntlmAvIDMsvAvNbDomainName    uint16 = 2
+	ntlmAvIDMsvAvDnsComputerName uint16 = 3
+	ntlmAvIDMsvAvDnsDomainName   uint16 = 4
+	ntlmAvIDMsvAvDnsTreeName     uint16 = 5
+	ntlmAvIDMsvAvTimestamp       uint16 = 7
 )
 
 type NtlmChallengeState struct {
@@ -56,6 +97,20 @@ func ntlmMessageType(data []byte) (uint32, error) {
 		return 0, errors.New("invalid NTLM signature")
 	}
 	return binary.LittleEndian.Uint32(data[8:12]), nil
+}
+
+func parseNTLMNegotiateFlags(data []byte) (uint32, error) {
+	if len(data) < 16 {
+		return 0, errors.New("NTLM negotiate message too short")
+	}
+	msgType, err := ntlmMessageType(data)
+	if err != nil {
+		return 0, err
+	}
+	if msgType != ntlmMessageTypeNegotiate {
+		return 0, errors.New("NTLM negotiate message type mismatch")
+	}
+	return binary.LittleEndian.Uint32(data[12:16]), nil
 }
 
 func extractNTLMToken(data []byte) ([]byte, error) {
@@ -191,17 +246,32 @@ type ntlmChallengeMessageFields struct {
 	TargetInfo      ntlmVarField
 }
 
-func buildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byte, error) {
+func buildNTLMChallengeMessage(serverChallenge []byte, targetName string, clientFlags *uint32) ([]byte, error) {
 	if len(serverChallenge) != 8 {
 		return nil, errors.New("invalid NTLM challenge length")
 	}
+	flags := ntlmDefaultFlags
+	if clientFlags != nil {
+		flags = *clientFlags & ntlmSupportedFlags
+		if flags == 0 {
+			flags = ntlmDefaultFlags
+		}
+	}
 	payloadOffset := 48
-	targetNameBytes := protocol.EncodeUTF16(targetName)
-	targetInfoBytes := buildNTLMTargetInfo(time.Now())
+	targetNameBytes := []byte{}
+	if flags&ntlmNegotiateRequestTarget != 0 {
+		if flags&ntlmNegotiateUnicode != 0 {
+			targetNameBytes = protocol.EncodeUTF16(targetName)
+		} else {
+			targetNameBytes = []byte(targetName)
+		}
+	}
+	targetInfoBytes := buildNTLMTargetInfo(time.Now(), targetName)
+	flags |= ntlmNegotiateTargetInfo
 	msg := ntlmChallengeMessageFields{
 		Header:         newNTLMMessageHeader(ntlmMessageTypeChallenge),
 		TargetName:     newNTLMVarField(&payloadOffset, len(targetNameBytes)),
-		NegotiateFlags: ntlmChallengeFlags,
+		NegotiateFlags: flags,
 		TargetInfo:     newNTLMVarField(&payloadOffset, len(targetInfoBytes)),
 	}
 	copy(msg.ServerChallenge[:], serverChallenge)
@@ -219,18 +289,34 @@ func buildNTLMChallengeMessage(serverChallenge []byte, targetName string) ([]byt
 	return b.Bytes(), nil
 }
 
-func buildNTLMTargetInfo(now time.Time) []byte {
+func buildNTLMTargetInfo(now time.Time, targetName string) []byte {
 	timestamp := make([]byte, 8)
 	ft := uint64(now.UnixNano()) / 100
 	ft += 116444736000000000
 	binary.LittleEndian.PutUint64(timestamp, ft)
 
 	var b bytes.Buffer
-	_ = binary.Write(&b, binary.LittleEndian, ntlmAvIDMsvAvTimestamp)
-	_ = binary.Write(&b, binary.LittleEndian, uint16(len(timestamp)))
-	_, _ = b.Write(timestamp)
-	_ = binary.Write(&b, binary.LittleEndian, ntlmAvIDMsvAvEOL)
-	_ = binary.Write(&b, binary.LittleEndian, uint16(0))
+	writeAV := func(id uint16, value []byte) {
+		_ = binary.Write(&b, binary.LittleEndian, id)
+		_ = binary.Write(&b, binary.LittleEndian, uint16(len(value)))
+		if len(value) > 0 {
+			_, _ = b.Write(value)
+		}
+	}
+	normalized := strings.TrimSpace(targetName)
+	if normalized == "" {
+		normalized = ntlmTargetName
+	}
+	nameBytes := protocol.EncodeUTF16(normalized)
+	if len(nameBytes) > 0 {
+		writeAV(ntlmAvIDMsvAvNbDomainName, nameBytes)
+		writeAV(ntlmAvIDMsvAvNbComputerName, nameBytes)
+		writeAV(ntlmAvIDMsvAvDnsDomainName, nameBytes)
+		writeAV(ntlmAvIDMsvAvDnsComputerName, nameBytes)
+		writeAV(ntlmAvIDMsvAvDnsTreeName, nameBytes)
+	}
+	writeAV(ntlmAvIDMsvAvTimestamp, timestamp)
+	writeAV(ntlmAvIDMsvAvEOL, nil)
 	return b.Bytes()
 }
 
@@ -262,6 +348,9 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 				var authHeaders []string
 				if isRDG {
 					authHeaders = append(authHeaders, challenge.Header)
+					if strings.EqualFold(scheme, "Negotiate") && token != "" {
+						authHeaders = append(authHeaders, "NTLM "+token)
+					}
 				} else {
 					authHeaders = append(authHeaders, challenge.Header)
 					if strings.EqualFold(scheme, "Negotiate") && token != "" {
