@@ -5,6 +5,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"remotegateway/internal/config"
 	"remotegateway/internal/ldap"
 	"remotegateway/internal/session"
 	"strings"
@@ -32,7 +33,7 @@ func extractCredentials(r *http.Request) (string, string, bool, error) {
 	return username, password, true, nil
 }
 
-func handleLoginPost(sessionManager *session.Manager) http.HandlerFunc {
+func handleLoginPost(sessionManager *session.Manager, settings *config.SettingsType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok, err := extractCredentials(r)
 		if err != nil {
@@ -44,7 +45,7 @@ func handleLoginPost(sessionManager *session.Manager) http.HandlerFunc {
 			return
 		}
 
-		user, err := ldap.LdapAuthenticateAccess(username, password)
+		user, err := ldap.LdapAuthenticateAccess(username, password, settings)
 		if err != nil {
 			log.Printf("ldap auth failed for %s: %v", username, err)
 			serveLogin(w, "Invalid credentials.")

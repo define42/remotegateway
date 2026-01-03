@@ -31,9 +31,9 @@ func TestLDAPAuthenticateWithGlauthConfig(t *testing.T) {
 	os.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
 	os.Setenv("LDAP_STARTTLS", "false")
 	os.Setenv("LDAP_USER_DOMAIN", "@example.com")
-	config.LdapCfg = config.LoadLDAPConfig()
 
-	u, err := ldap.LdapAuthenticateAccess("testuser", "dogood")
+	settings := config.NewSettingType(false)
+	u, err := ldap.LdapAuthenticateAccess("testuser", "dogood", settings)
 	if err != nil {
 		t.Fatalf("unexpected auth failure: %v", err)
 	}
@@ -53,13 +53,10 @@ func TestLDAPAuthenticateJohndoeSingleNamespace(t *testing.T) {
 	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
 	t.Setenv("LDAP_STARTTLS", "false")
 	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
-	prevCfg := config.LdapCfg
-	config.LdapCfg = config.LoadLDAPConfig()
-	t.Cleanup(func() {
-		config.LdapCfg = prevCfg
-	})
 
-	u, err := ldap.LdapAuthenticateAccess("johndoe", "dogood")
+	settings := config.NewSettingType(false)
+
+	u, err := ldap.LdapAuthenticateAccess("johndoe", "dogood", settings)
 	if err != nil {
 		t.Fatalf("unexpected auth failure: %v", err)
 	}
@@ -221,25 +218,22 @@ func setupLDAPProxyServer(t *testing.T, ctx context.Context) (string, *session.M
 
 	configureLDAPEnv(t, ldapURL)
 
-	prevCfg := config.LdapCfg
-	config.LdapCfg = config.LoadLDAPConfig()
-	t.Cleanup(func() {
-		config.LdapCfg = prevCfg
-	})
+	settings := configureLDAPEnv(t, ldapURL)
 
 	sessionManager := session.NewManager()
-	server := httptest.NewServer(getRemoteGatewayRotuer(sessionManager))
+	server := httptest.NewServer(getRemoteGatewayRotuer(sessionManager, settings))
 	t.Cleanup(server.Close)
 
 	return server.URL, sessionManager
 }
 
-func configureLDAPEnv(t *testing.T, ldapURL string) {
+func configureLDAPEnv(t *testing.T, ldapURL string) *config.SettingsType {
 	t.Helper()
 	t.Setenv("LDAP_URL", ldapURL)
 	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
 	t.Setenv("LDAP_STARTTLS", "false")
 	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
+	return config.NewSettingType(false)
 }
 
 func startGlauth(ctx context.Context, t *testing.T, network string) (string, func()) {

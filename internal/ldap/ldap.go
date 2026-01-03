@@ -10,16 +10,18 @@ import (
 	"github.com/go-ldap/ldap/v3"
 )
 
-func LdapAuthenticateAccess(username, password string) (*types.User, error) {
-	conn, err := dialLDAP(config.LdapCfg)
+func LdapAuthenticateAccess(username, password string, settings *config.SettingsType) (*types.User, error) {
+	conn, err := dialLDAP(settings)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
+	userMailDomain := settings.Get(config.LDAP_USER_DOMAIN)
+
 	mail := username
-	if !strings.Contains(username, "@") && config.LdapCfg.UserMailDomain != "" {
-		domain := config.LdapCfg.UserMailDomain
+	if !strings.Contains(username, "@") && userMailDomain != "" {
+		domain := userMailDomain
 		if !strings.HasPrefix(domain, "@") {
 			domain = "@" + domain
 		}
@@ -45,10 +47,13 @@ func LdapAuthenticateAccess(username, password string) (*types.User, error) {
 		return nil, fmt.Errorf("ldap bind failed: %w", bindErr)
 	}
 
-	filter := fmt.Sprintf(config.LdapCfg.UserFilter, mail)
+	userFilter := settings.Get(config.LDAP_USER_FILTER)
+	baseDN := settings.Get(config.LDAP_BASE_DN)
+
+	filter := fmt.Sprintf(userFilter, mail)
 	fmt.Println("filter", filter)
 	searchReq := ldap.NewSearchRequest(
-		config.LdapCfg.BaseDN,
+		baseDN,
 		ldap.ScopeWholeSubtree,
 		ldap.NeverDerefAliases, 1, 0, false,
 		filter,
@@ -67,17 +72,21 @@ func LdapAuthenticateAccess(username, password string) (*types.User, error) {
 	return types.NewUser(username, password, "")
 }
 
-func dialLDAP(cfg config.LDAPConfig) (*ldap.Conn, error) {
+func dialLDAP(settings *config.SettingsType) (*ldap.Conn, error) {
 
 	// #nosec G402 -- skip TLS verification if configured
-	conn, err := ldap.DialURL(cfg.URL, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}))
+	ldapUrl := settings.Get(config.LDAP_URL)
+	insecureSkipVerify := settings.IsTrue(config.LDAP_SKIP_TLS_VERIFY)
+	startTLS := settings.IsTrue(config.LDAP_STARTTLS)
+
+	conn, err := ldap.DialURL(ldapUrl, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: insecureSkipVerify}))
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.StartTLS && strings.HasPrefix(cfg.URL, "ldap://") {
+	if startTLS && strings.HasPrefix(ldapUrl, "ldap://") {
 		// #nosec G402 -- skip TLS verification if configured
-		if err := conn.StartTLS(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}); err != nil {
+		if err := conn.StartTLS(&tls.Config{InsecureSkipVerify: insecureSkipVerify}); err != nil {
 			_ = conn.Close()
 			return nil, err
 		}

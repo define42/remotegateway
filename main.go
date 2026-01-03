@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"remotegateway/internal/config"
 	"remotegateway/internal/contextKey"
 	"remotegateway/internal/ntlm"
 	"remotegateway/internal/rdpgw/common"
@@ -219,13 +220,13 @@ func gatewayRouter(sessionManager *session.Manager) http.Handler {
 	return gatewayHandler
 }
 
-func getRemoteGatewayRotuer(sessionManager *session.Manager) http.Handler {
+func getRemoteGatewayRotuer(sessionManager *session.Manager, settings *config.SettingsType) http.Handler {
 
 	router := chi.NewRouter()
 	router.Use(sessionManager.LoadAndSave)
 
 	router.Handle("/static/*", http.FileServer(http.FS(staticFiles)))
-	router.Post("/login", handleLoginPost(sessionManager))
+	router.Post("/login", handleLoginPost(sessionManager, settings))
 	router.Get("/login", handleLoginGet)
 	router.HandleFunc("/logout", handleLogout(sessionManager))
 
@@ -548,7 +549,8 @@ func main() {
 	//	fmt.Println(virt.ListVMs())
 
 	sessionManager := session.NewManager()
-	mux := getRemoteGatewayRotuer(sessionManager)
+	settings := config.NewSettingType(false)
+	mux := getRemoteGatewayRotuer(sessionManager, settings)
 
 	srv := &http.Server{
 		Addr:      ":8443",

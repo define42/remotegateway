@@ -3,12 +3,14 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"remotegateway/internal/config"
 	"remotegateway/internal/session"
 	"testing"
 )
 
 func TestGetRemoteGatewayRotuerHealth(t *testing.T) {
-	handler := getRemoteGatewayRotuer(session.NewManager())
+	settings := config.NewSettingType(false)
+	handler := getRemoteGatewayRotuer(session.NewManager(), settings)
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/api/health", nil)
 	rec := httptest.NewRecorder()
 
@@ -23,7 +25,8 @@ func TestGetRemoteGatewayRotuerHealth(t *testing.T) {
 }
 
 func TestGetRemoteGatewayRotuerRDPFile(t *testing.T) {
-	handler := getRemoteGatewayRotuer(session.NewManager())
+	settings := config.NewSettingType(false)
+	handler := getRemoteGatewayRotuer(session.NewManager(), settings)
 	req := httptest.NewRequest(http.MethodGet, "http://gw.example.com:8443/api/rdpgw.rdp", nil)
 	req.Host = "gw.example.com:8443"
 	rec := httptest.NewRecorder()
@@ -39,7 +42,8 @@ func TestGetRemoteGatewayRotuerRDPFile(t *testing.T) {
 }
 
 func TestGetRemoteGatewayRotuerRoot(t *testing.T) {
-	handler := getRemoteGatewayRotuer(session.NewManager())
+	settings := config.NewSettingType(false)
+	handler := getRemoteGatewayRotuer(session.NewManager(), settings)
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
 	rec := httptest.NewRecorder()
 
@@ -54,7 +58,8 @@ func TestGetRemoteGatewayRotuerRoot(t *testing.T) {
 }
 
 func TestGetRemoteGatewayRotuerNotFound(t *testing.T) {
-	handler := getRemoteGatewayRotuer(session.NewManager())
+	settings := config.NewSettingType(false)
+	handler := getRemoteGatewayRotuer(session.NewManager(), settings)
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/not-found", nil)
 	rec := httptest.NewRecorder()
 
@@ -66,7 +71,8 @@ func TestGetRemoteGatewayRotuerNotFound(t *testing.T) {
 }
 
 func TestGetRemoteGatewayRotuerGatewayRoute(t *testing.T) {
-	handler := getRemoteGatewayRotuer(session.NewManager())
+	settings := config.NewSettingType(false)
+	handler := getRemoteGatewayRotuer(session.NewManager(), settings)
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/remoteDesktopGateway/", nil)
 	rec := httptest.NewRecorder()
 
