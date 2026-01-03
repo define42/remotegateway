@@ -258,12 +258,27 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 			var challenge AuthChallenge
 			if errors.As(err, &challenge) {
 				scheme, token := splitAuthHeader(challenge.Header)
-				authHeaders := []string{challenge.Header}
-				if strings.EqualFold(scheme, "Negotiate") && token != "" {
-					authHeaders = append(authHeaders, "NTLM "+token)
-				}
 				isRDG := r.URL.Path == "/remoteDesktopGateway" || strings.HasPrefix(r.URL.Path, "/remoteDesktopGateway/")
-				if !isRDG {
+				isWebsocket := strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") &&
+					strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+				var authHeaders []string
+				if isRDG {
+					if strings.EqualFold(scheme, "Negotiate") && token != "" {
+						if isWebsocket {
+							authHeaders = append(authHeaders, "NTLM "+token)
+							authHeaders = append(authHeaders, "Negotiate")
+						} else {
+							authHeaders = append(authHeaders, "Negotiate "+token)
+							authHeaders = append(authHeaders, "NTLM "+token)
+						}
+					} else {
+						authHeaders = append(authHeaders, challenge.Header)
+					}
+				} else {
+					authHeaders = append(authHeaders, challenge.Header)
+					if strings.EqualFold(scheme, "Negotiate") && token != "" {
+						authHeaders = append(authHeaders, "NTLM "+token)
+					}
 					authHeaders = append(authHeaders, `Basic realm="rdpgw"`)
 				}
 				for _, header := range authHeaders {

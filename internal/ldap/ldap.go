@@ -3,6 +3,7 @@ package ldap
 import (
 	"crypto/tls"
 	"fmt"
+	"log"
 	"remotegateway/internal/config"
 	"remotegateway/internal/types"
 	"strings"
@@ -18,6 +19,15 @@ func LdapAuthenticateAccess(username, password string, settings *config.Settings
 	defer conn.Close()
 
 	userMailDomain := settings.Get(config.LDAP_USER_DOMAIN)
+	ntlmFallback := strings.TrimSpace(settings.Get(config.NTLM_DOMAIN))
+	if ntlmFallback == "" {
+		ntlmFallback = userMailDomain
+	}
+	normalizedUser, ntlmDomain := splitNTLMUserDomain(username, ntlmFallback)
+	if normalizedUser == "" {
+		normalizedUser = username
+	}
+	log.Printf("NTLM login mapping: input=%q user=%q domain=%q", username, normalizedUser, ntlmDomain)
 
 	mail := username
 	if !strings.Contains(username, "@") && userMailDomain != "" {
@@ -69,7 +79,7 @@ func LdapAuthenticateAccess(username, password string, settings *config.Settings
 		return nil, fmt.Errorf("user %s not found", mail)
 	}
 
-	return types.NewUser(username, password, settings.Get(config.NTLM_DOMAIN))
+	return types.NewUser(normalizedUser, password, ntlmDomain)
 }
 
 func dialLDAP(settings *config.SettingsType) (*ldap.Conn, error) {
@@ -93,4 +103,30 @@ func dialLDAP(settings *config.SettingsType) (*ldap.Conn, error) {
 	}
 
 	return conn, nil
+}
+
+func splitNTLMUserDomain(username, fallbackDomain string) (string, string) {
+	user := strings.TrimSpace(username)
+	if user == "" {
+		return "", ""
+	}
+	if idx := strings.LastIndex(user, "\\"); idx >= 0 {
+		domain := strings.TrimSpace(user[:idx])
+		trimmed := strings.TrimSpace(user[idx+1:])
+		if trimmed != "" {
+			return trimmed, domain
+		}
+	}
+	if idx := strings.LastIndex(user, "@"); idx >= 0 {
+		domain := strings.TrimSpace(user[idx+1:])
+		trimmed := strings.TrimSpace(user[:idx])
+		if trimmed != "" {
+			return trimmed, domain
+		}
+	}
+	fallback := strings.TrimSpace(fallbackDomain)
+	if strings.HasPrefix(fallback, "@") {
+		fallback = strings.TrimPrefix(fallback, "@")
+	}
+	return user, fallback
 }
