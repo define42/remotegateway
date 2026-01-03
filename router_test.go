@@ -82,13 +82,17 @@ func TestGetRemoteGatewayRotuerGatewayRoute(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
 	}
 	values := rec.Header().Values("WWW-Authenticate")
-	hasBasic := false
+	hasNTLM := false
+	hasNegotiate := false
 	for _, v := range values {
-		if v == `Basic realm="rdpgw"` {
-			hasBasic = true
+		if v == "NTLM" {
+			hasNTLM = true
+		}
+		if v == "Negotiate" {
+			hasNegotiate = true
 		}
 	}
-	if !hasBasic {
-		t.Fatalf("expected Basic realm challenge, got %v", values)
+	if !hasNTLM || !hasNegotiate {
+		t.Fatalf("expected NTLM and Negotiate challenges, got %v", values)
 	}
 }

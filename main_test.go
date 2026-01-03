@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"remotegateway/internal/config"
 	"remotegateway/internal/ntlm"
 	"remotegateway/internal/session"
 	"remotegateway/internal/types"
@@ -66,6 +67,11 @@ func seedSession(t *testing.T, sessionManager *session.Manager, username, passwo
 	}
 }
 
+func defaultNTLMDomain() string {
+	settings := config.NewSettingType(false)
+	return settings.Get(config.NTLM_DOMAIN)
+}
+
 func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -94,7 +100,7 @@ func TestAuthenticateNTLMAuthenticateSuccess(t *testing.T) {
 		SessionManager: sessionManager,
 	}
 
-	domain := ""
+	domain := defaultNTLMDomain()
 	ntResponse := ntlm.BuildTestNTLMv2Response(challenge, ntlm.StaticUser, domain, ntlm.StaticPassword)
 	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
 	req.Header.Set("Authorization", "NTLM "+base64.StdEncoding.EncodeToString(msg))
@@ -184,7 +190,7 @@ func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
 	key := ntlm.NtlmChallengeKey(req)
-	domain := ""
+	domain := defaultNTLMDomain()
 	seedSession(t, sessionManager, ntlm.StaticUser, ntlm.StaticPassword, domain)
 	auth := &ntlm.StaticAuth{
 		Challenges: map[string]ntlm.NtlmChallengeState{
@@ -211,7 +217,7 @@ func TestVerifyNTLMAuthenticateSuccess(t *testing.T) {
 func TestVerifyNTLMAuthenticateMissingChallenge(t *testing.T) {
 	auth := &ntlm.StaticAuth{}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
-	domain := ""
+	domain := defaultNTLMDomain()
 	ntResponse := ntlm.BuildTestNTLMv2Response([]byte{1, 2, 3, 4, 5, 6, 7, 8}, ntlm.StaticUser, domain, ntlm.StaticPassword)
 	msg := ntlm.BuildTestNTLMAuthenticateMessage(ntlm.StaticUser, domain, ntResponse, true)
 	user, err := auth.VerifyNTLMAuthenticate(req, msg, "NTLM")
@@ -235,7 +241,7 @@ func TestVerifyNTLMAuthenticateInvalidResponse(t *testing.T) {
 	challenge := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	req := &http.Request{RemoteAddr: "1.2.3.4:3389", Header: http.Header{}}
 	key := ntlm.NtlmChallengeKey(req)
-	domain := ""
+	domain := defaultNTLMDomain()
 	seedSession(t, sessionManager, ntlm.StaticUser, ntlm.StaticPassword, domain)
 	auth := &ntlm.StaticAuth{
 		Challenges: map[string]ntlm.NtlmChallengeState{

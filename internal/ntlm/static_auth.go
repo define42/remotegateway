@@ -57,10 +57,14 @@ func (a *StaticAuth) Authenticate(
 			log.Printf("Rdg-User-Id decoded: %q", decodedUser)
 		}
 	}
+	path := ""
+	if r.URL != nil {
+		path = r.URL.Path
+	}
 	log.Printf(
 		"NTLM auth request: method=%s path=%s remote=%s conn_id=%s ua=%q auth_present=%t",
 		r.Method,
-		r.URL.Path,
+		path,
 		r.RemoteAddr,
 		r.Header.Get("Rdg-Connection-Id"),
 		r.UserAgent(),
