@@ -255,18 +255,13 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, err := authenticator.Authenticate(r.Context(), r)
 		if err != nil {
+			isRDG := r.URL.Path == "/remoteDesktopGateway" || strings.HasPrefix(r.URL.Path, "/remoteDesktopGateway/")
 			var challenge AuthChallenge
 			if errors.As(err, &challenge) {
 				scheme, token := splitAuthHeader(challenge.Header)
-				isRDG := r.URL.Path == "/remoteDesktopGateway" || strings.HasPrefix(r.URL.Path, "/remoteDesktopGateway/")
 				var authHeaders []string
 				if isRDG {
-					if strings.EqualFold(scheme, "Negotiate") && token != "" {
-						authHeaders = append(authHeaders, "Negotiate "+token)
-						authHeaders = append(authHeaders, "NTLM "+token)
-					} else {
-						authHeaders = append(authHeaders, challenge.Header)
-					}
+					authHeaders = append(authHeaders, challenge.Header)
 				} else {
 					authHeaders = append(authHeaders, challenge.Header)
 					if strings.EqualFold(scheme, "Negotiate") && token != "" {
@@ -300,7 +295,10 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 				r.Header.Get("Rdg-Connection-Id"),
 				err,
 			)
-			if r.URL.Path != "/remoteDesktopGateway" && !strings.HasPrefix(r.URL.Path, "/remoteDesktopGateway/") {
+			if isRDG {
+				w.Header().Add("WWW-Authenticate", "NTLM")
+				w.Header().Add("WWW-Authenticate", "Negotiate")
+			} else {
 				w.Header().Set("WWW-Authenticate", `Basic realm="rdpgw"`)
 			}
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
