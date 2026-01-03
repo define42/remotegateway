@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"html"
+	"io"
 	"log"
 	"net/http"
 	"remotegateway/internal/config"
@@ -88,4 +89,21 @@ func handleLogout(sessionManager *session.Manager) http.HandlerFunc {
 		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	}
+}
+
+func handleKdcProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Body != nil {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_ = r.Body.Close()
+	}
+	log.Printf(
+		"KdcProxy request: method=%s remote=%s ua=%q content_type=%q content_len=%d",
+		r.Method,
+		r.RemoteAddr,
+		r.UserAgent(),
+		r.Header.Get("Content-Type"),
+		r.ContentLength,
+	)
+	w.Header().Set("Content-Type", "application/kerberos")
+	w.WriteHeader(http.StatusOK)
 }

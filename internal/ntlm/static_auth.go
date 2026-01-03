@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"remotegateway/internal/rdpgw/protocol"
 	"remotegateway/internal/session"
 	"strings"
 	"sync"
@@ -44,6 +45,17 @@ func (a *StaticAuth) Authenticate(
 
 	fmt.Println(r)
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	rdgUserID := strings.TrimSpace(r.Header.Get("Rdg-User-Id"))
+	if rdgUserID != "" {
+		decoded, err := base64.StdEncoding.DecodeString(rdgUserID)
+		if err != nil {
+			log.Printf("Rdg-User-Id base64 decode failed: %v", err)
+		} else if decodedUser, err := protocol.DecodeUTF16(decoded); err != nil {
+			log.Printf("Rdg-User-Id UTF-16 decode failed: %v", err)
+		} else {
+			log.Printf("Rdg-User-Id decoded: %q", decodedUser)
+		}
+	}
 	log.Printf(
 		"NTLM auth request: method=%s path=%s remote=%s conn_id=%s ua=%q auth_present=%t",
 		r.Method,

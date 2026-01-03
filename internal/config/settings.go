@@ -30,6 +30,7 @@ func NewSettingType(print bool) *SettingsType {
 	s.Set(LDAP_USER_DOMAIN, "LDAP user mail domain", "@example.com")
 	s.Set(LDAP_STARTTLS, "Use StartTLS when connecting to LDAP", "false")
 	s.Set(LDAP_SKIP_TLS_VERIFY, "Skip TLS verification when connecting to LDAP", "true")
+	s.Set(NTLM_DOMAIN, "NTLM domain name", "vdi")
 
 	if print {
 		table := tablewriter.NewWriter(os.Stdout)
@@ -80,4 +81,5 @@ const (
 	LDAP_STARTTLS        = "LDAP_STARTTLS"
 	LDAP_SKIP_TLS_VERIFY = "LDAP_SKIP_TLS_VERIFY"
 	VDI_IMAGE_DIR        = "VDI_IMAGE_DIR"
+	NTLM_DOMAIN          = "NTLM_DOMAIN"
 )

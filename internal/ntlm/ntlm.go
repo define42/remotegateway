@@ -257,18 +257,28 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 		if err != nil {
 			var challenge AuthChallenge
 			if errors.As(err, &challenge) {
-				scheme, _ := splitAuthHeader(challenge.Header)
+				scheme, token := splitAuthHeader(challenge.Header)
+				authHeaders := []string{challenge.Header}
+				if strings.EqualFold(scheme, "Negotiate") && token != "" {
+					authHeaders = append(authHeaders, "NTLM "+token)
+				}
+				isRDG := r.URL.Path == "/remoteDesktopGateway" || strings.HasPrefix(r.URL.Path, "/remoteDesktopGateway/")
+				if !isRDG {
+					authHeaders = append(authHeaders, `Basic realm="rdpgw"`)
+				}
+				for _, header := range authHeaders {
+					w.Header().Add("WWW-Authenticate", header)
+				}
 				log.Printf(
-					"Gateway auth challenge: scheme=%s remote=%s client_ip=%s method=%s path=%s conn_id=%s",
+					"Gateway auth challenge: scheme=%s remote=%s client_ip=%s method=%s path=%s conn_id=%s www_authenticate=%q",
 					scheme,
 					r.RemoteAddr,
 					common.GetClientIp(r.Context()),
 					r.Method,
 					r.URL.Path,
 					r.Header.Get("Rdg-Connection-Id"),
+					strings.Join(authHeaders, " | "),
 				)
-				w.Header().Add("WWW-Authenticate", challenge.Header)
-				w.Header().Add("WWW-Authenticate", `Basic realm="rdpgw"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -282,7 +292,9 @@ func BasicAuthMiddleware(authenticator *StaticAuth, next http.Handler) http.Hand
 				r.Header.Get("Rdg-Connection-Id"),
 				err,
 			)
-			w.Header().Set("WWW-Authenticate", `Basic realm="rdpgw"`)
+			if r.URL.Path != "/remoteDesktopGateway" && !strings.HasPrefix(r.URL.Path, "/remoteDesktopGateway/") {
+				w.Header().Set("WWW-Authenticate", `Basic realm="rdpgw"`)
+			}
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

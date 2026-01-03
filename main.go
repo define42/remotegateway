@@ -230,6 +230,7 @@ func getRemoteGatewayRotuer(sessionManager *session.Manager, settings *config.Se
 	router.Post("/login", handleLoginPost(sessionManager, settings))
 	router.Get("/login", handleLoginGet)
 	router.HandleFunc("/logout", handleLogout(sessionManager))
+	router.HandleFunc("/KdcProxy", handleKdcProxy)
 
 	router.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

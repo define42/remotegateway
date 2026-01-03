@@ -69,7 +69,7 @@ func LdapAuthenticateAccess(username, password string, settings *config.Settings
 		return nil, fmt.Errorf("user %s not found", mail)
 	}
 
-	return types.NewUser(username, password, "")
+	return types.NewUser(username, password, settings.Get(config.NTLM_DOMAIN))
 }
 
 func dialLDAP(settings *config.SettingsType) (*ldap.Conn, error) {
