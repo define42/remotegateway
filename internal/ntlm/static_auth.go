@@ -171,7 +171,11 @@ func (a *StaticAuth) issueNTLMChallenge(r *http.Request, clientFlags *uint32) (s
 			targetName = host
 		}
 	}
-	msg, err := buildNTLMChallengeMessage(serverChallenge, targetName, clientFlags)
+	forceTargetInfo := true
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-WebSocket-Protocol")), "binary") {
+		forceTargetInfo = false
+	}
+	msg, err := buildNTLMChallengeMessage(serverChallenge, targetName, clientFlags, forceTargetInfo)
 	if err != nil {
 		return "", err
 	}

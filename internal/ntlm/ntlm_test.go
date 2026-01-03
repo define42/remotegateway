@@ -124,7 +124,7 @@ func TestParseNTLMAuthenticateMessage(t *testing.T) {
 func TestBuildNTLMChallengeMessage(t *testing.T) {
 	challenge := []byte{0, 1, 2, 3, 4, 5, 6, 7}
 	flags := ntlmDefaultFlags | ntlmNegotiateTargetInfo
-	msg, err := buildNTLMChallengeMessage(challenge, ntlmTargetName, &flags)
+	msg, err := buildNTLMChallengeMessage(challenge, ntlmTargetName, &flags, true)
 	if err != nil {
 		t.Fatalf("expected build to succeed: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestBuildNTLMChallengeMessage(t *testing.T) {
 		t.Fatalf("expected timestamp AV pair")
 	}
 
-	if _, err := buildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName, nil); err == nil {
+	if _, err := buildNTLMChallengeMessage([]byte{1, 2, 3}, ntlmTargetName, nil, true); err == nil {
 		t.Fatalf("expected error for invalid challenge length")
 	}
 }

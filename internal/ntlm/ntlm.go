@@ -246,7 +246,7 @@ type ntlmChallengeMessageFields struct {
 	TargetInfo      ntlmVarField
 }
 
-func buildNTLMChallengeMessage(serverChallenge []byte, targetName string, clientFlags *uint32) ([]byte, error) {
+func buildNTLMChallengeMessage(serverChallenge []byte, targetName string, clientFlags *uint32, forceTargetInfo bool) ([]byte, error) {
 	if len(serverChallenge) != 8 {
 		return nil, errors.New("invalid NTLM challenge length")
 	}
@@ -266,8 +266,13 @@ func buildNTLMChallengeMessage(serverChallenge []byte, targetName string, client
 			targetNameBytes = []byte(targetName)
 		}
 	}
-	targetInfoBytes := buildNTLMTargetInfo(time.Now(), targetName)
-	flags |= ntlmNegotiateTargetInfo
+	targetInfoBytes := []byte{}
+	if forceTargetInfo || flags&ntlmNegotiateTargetInfo != 0 {
+		targetInfoBytes = buildNTLMTargetInfo(time.Now(), targetName)
+		flags |= ntlmNegotiateTargetInfo
+	} else {
+		flags &^= ntlmNegotiateTargetInfo
+	}
 	msg := ntlmChallengeMessageFields{
 		Header:         newNTLMMessageHeader(ntlmMessageTypeChallenge),
 		TargetName:     newNTLMVarField(&payloadOffset, len(targetNameBytes)),
