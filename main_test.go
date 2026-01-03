@@ -16,7 +16,7 @@ import (
 )
 
 func TestRDPFileContentIncludesFullscreenAndGateway(t *testing.T) {
-	content := rdpFileContent("gw.example.com:8443", "workstation:3389")
+	content := rdpFileContent("gw.example.com:8443", "workstation:3389", config.NewSettingType(false), "jdoe")
 
 	if !strings.Contains(content, "screen mode id:i:2\r\n") {
 		t.Fatalf("expected fullscreen setting, got:\n%s", content)

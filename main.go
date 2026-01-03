@@ -272,9 +272,15 @@ func registerAPI(api huma.API, sessionManager *session.Manager, settings *config
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
 				req, w := humachi.Unwrap(ctx)
+				user, ok := sessionManager.UserFromContext(req.Context())
+				if !ok {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+
 				gatewayHost := gatewayHostFromRequest(req)
 				targetHost := rdpTargetFromRequest(req)
-				rdpContent := rdpFileContent(gatewayHost, targetHost)
+				rdpContent := rdpFileContent(gatewayHost, targetHost, settings, user.GetName())
 
 				w.Header().Set("Content-Type", "application/x-rdp")
 				w.Header().Set("Content-Disposition", `attachment; filename="`+rdpFilename+`"`)

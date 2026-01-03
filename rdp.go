@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"net/http"
+	"remotegateway/internal/config"
 	"strings"
 )
 
@@ -64,7 +65,7 @@ func addPort(host, port string) string {
 	return net.JoinHostPort(host, port)
 }
 
-func rdpFileContent(gatewayHost, targetHost string) string {
+func rdpFileContent(gatewayHost, targetHost string, settings *config.SettingsType, username string) string {
 	var b strings.Builder
 	write := func(line string) {
 		b.WriteString(line)
@@ -80,8 +81,8 @@ func rdpFileContent(gatewayHost, targetHost string) string {
 	write("authentication level:i:2")
 	write("prompt for credentials:i:1")
 
-	write("username:s:CORP\\jdoe")
-	write("gatewayusername:s:CORP\\jdoe")
+	write("username:s:" + username)
+	write("gatewayusername:s:" + settings.Get(config.NTLM_DOMAIN) + "\\" + username)
 	//write("use redirection server name:i:1")
 	return b.String()
 }

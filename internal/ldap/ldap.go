@@ -125,8 +125,6 @@ func splitNTLMUserDomain(username, fallbackDomain string) (string, string) {
 		}
 	}
 	fallback := strings.TrimSpace(fallbackDomain)
-	if strings.HasPrefix(fallback, "@") {
-		fallback = strings.TrimPrefix(fallback, "@")
-	}
+	fallback = strings.TrimPrefix(fallback, "@")
 	return user, fallback
 }
