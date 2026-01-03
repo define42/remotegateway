@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,6 +103,22 @@ func logRequests(next http.Handler) http.Handler {
 			r.Header.Get("Rdg-Connection-Id"),
 		)
 	})
+}
+
+func intSetting(settings *config.SettingsType, key string, defaultValue int) int {
+	if settings == nil {
+		return defaultValue
+	}
+	raw := strings.TrimSpace(settings.Get(key))
+	if raw == "" {
+		return defaultValue
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		log.Printf("invalid %s=%q; using %d", key, raw, defaultValue)
+		return defaultValue
+	}
+	return value
 }
 
 // getIPOfVm allows tests to stub VM lookups.
@@ -204,7 +221,12 @@ func ensureTLSCert(certPath, keyPath string) error {
    ---------------------------
 */
 
-func gatewayRouter(sessionManager *session.Manager) http.Handler {
+func gatewayRouter(sessionManager *session.Manager, settings *config.SettingsType) http.Handler {
+	sendBuf := intSetting(settings, config.RDPGW_SEND_BUF, 0)
+	recvBuf := intSetting(settings, config.RDPGW_RECV_BUF, 0)
+	wsReadBuf := intSetting(settings, config.RDPGW_WS_READ_BUF, 32768)
+	wsWriteBuf := intSetting(settings, config.RDPGW_WS_WRITE_BUF, 32768)
+
 	gw := protocol.Gateway{
 		ServerConf: &protocol.ServerConf{
 			IdleTimeout:                 0,
@@ -212,6 +234,10 @@ func gatewayRouter(sessionManager *session.Manager) http.Handler {
 			SmartCardAuth:               false,
 			RedirectFlags:               protocol.RedirectFlags{EnableAll: true},
 			ConvertToInternalServerFunc: converToInternServer,
+			SendBuf:                     sendBuf,
+			ReceiveBuf:                  recvBuf,
+			WebsocketReadBuffer:         wsReadBuf,
+			WebsocketWriteBuffer:        wsWriteBuf,
 		},
 	}
 
@@ -247,7 +273,7 @@ func getRemoteGatewayRotuer(sessionManager *session.Manager, settings *config.Se
 	registerAPI(api, sessionManager, settings)
 
 	//mux.Handle("/rdgateway/", gatewayHandler)
-	gatewayHandler := gatewayRouter(sessionManager)
+	gatewayHandler := gatewayRouter(sessionManager, settings)
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)

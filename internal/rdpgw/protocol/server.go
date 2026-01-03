@@ -31,6 +31,8 @@ type Server struct {
 	TokenAuth                   bool
 	ClientName                  string
 	Remote                      net.Conn
+	ReceiveBuf                  int
+	SendBuf                     int
 	State                       int
 }
 
@@ -45,6 +47,8 @@ type ServerConf struct {
 	TokenAuth                   bool
 	ReceiveBuf                  int
 	SendBuf                     int
+	WebsocketReadBuffer         int
+	WebsocketWriteBuffer        int
 }
 
 func NewServer(s *SessionInfo, conf *ServerConf) *Server {
@@ -59,6 +63,8 @@ func NewServer(s *SessionInfo, conf *ServerConf) *Server {
 		VerifyServerFunc:            conf.VerifyServerFunc,
 		VerifyTunnelAuthFunc:        conf.VerifyTunnelAuthFunc,
 		ConvertToInternalServerFunc: conf.ConvertToInternalServerFunc,
+		ReceiveBuf:                  conf.ReceiveBuf,
+		SendBuf:                     conf.SendBuf,
 	}
 	return h
 }
@@ -183,6 +189,7 @@ func (s *Server) Process(ctx context.Context) error {
 				log.Printf("Error connecting to %s, %s", host, err)
 				return err
 			}
+			s.tuneRemoteConn()
 			log.Printf("Connection established")
 			msg, err := s.channelResponse()
 			if err != nil {
@@ -226,6 +233,26 @@ func (s *Server) Process(ctx context.Context) error {
 			s.State = SERVER_STATE_CLOSED
 		default:
 			log.Printf("Unknown packet (size %d): %x", sz, pkt)
+		}
+	}
+}
+
+func (s *Server) tuneRemoteConn() {
+	tcpConn, ok := s.Remote.(*net.TCPConn)
+	if !ok {
+		return
+	}
+	if err := tcpConn.SetNoDelay(true); err != nil {
+		log.Printf("Error setting TCP no delay: %v", err)
+	}
+	if s.ReceiveBuf > 0 {
+		if err := tcpConn.SetReadBuffer(s.ReceiveBuf); err != nil {
+			log.Printf("Error setting TCP read buffer: %v", err)
+		}
+	}
+	if s.SendBuf > 0 {
+		if err := tcpConn.SetWriteBuffer(s.SendBuf); err != nil {
+			log.Printf("Error setting TCP write buffer: %v", err)
 		}
 	}
 }

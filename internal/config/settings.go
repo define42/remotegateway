@@ -31,6 +31,10 @@ func NewSettingType(print bool) *SettingsType {
 	s.Set(LDAP_STARTTLS, "Use StartTLS when connecting to LDAP", "false")
 	s.Set(LDAP_SKIP_TLS_VERIFY, "Skip TLS verification when connecting to LDAP", "true")
 	s.Set(NTLM_DOMAIN, "NTLM domain name", "vdi")
+	s.Set(RDPGW_SEND_BUF, "RD Gateway socket send buffer size (bytes)", "0")
+	s.Set(RDPGW_RECV_BUF, "RD Gateway socket receive buffer size (bytes)", "0")
+	s.Set(RDPGW_WS_READ_BUF, "RD Gateway websocket read buffer size (bytes)", "32768")
+	s.Set(RDPGW_WS_WRITE_BUF, "RD Gateway websocket write buffer size (bytes)", "32768")
 
 	if print {
 		table := tablewriter.NewWriter(os.Stdout)
@@ -82,4 +86,8 @@ const (
 	LDAP_SKIP_TLS_VERIFY = "LDAP_SKIP_TLS_VERIFY"
 	VDI_IMAGE_DIR        = "VDI_IMAGE_DIR"
 	NTLM_DOMAIN          = "NTLM_DOMAIN"
+	RDPGW_SEND_BUF       = "RDPGW_SEND_BUF"
+	RDPGW_RECV_BUF       = "RDPGW_RECV_BUF"
+	RDPGW_WS_READ_BUF    = "RDPGW_WS_READ_BUF"
+	RDPGW_WS_WRITE_BUF   = "RDPGW_WS_WRITE_BUF"
 )

@@ -20,9 +20,9 @@ import (
 type contextKey string
 
 const (
-	rdgConnectionIdKey = "Rdg-Connection-Id"
-	MethodRDGIN        = "RDG_IN_DATA"
-	MethodRDGOUT       = "RDG_OUT_DATA"
+	rdgConnectionIdKey            = "Rdg-Connection-Id"
+	MethodRDGIN                   = "RDG_IN_DATA"
+	MethodRDGOUT                  = "RDG_OUT_DATA"
 	sessionInfoCtxKey  contextKey = "SessionInfo"
 )
 
@@ -53,7 +53,6 @@ type Gateway struct {
 	ServerConf *ServerConf
 }
 
-var upgrader = websocket.Upgrader{}
 var c = cache.New(5*time.Minute, 10*time.Minute)
 
 func init() {
@@ -62,10 +61,18 @@ func init() {
 	prometheus.MustRegister(websocketConnections)
 }
 
+func (g *Gateway) serverConf() *ServerConf {
+	if g != nil && g.ServerConf != nil {
+		return g.ServerConf
+	}
+	return &ServerConf{}
+}
+
 func (g *Gateway) HandleGatewayProtocol(w http.ResponseWriter, r *http.Request) {
 	connectionCache.Set(float64(c.ItemCount()))
 
 	var s *SessionInfo
+	conf := g.serverConf()
 
 	connId := r.Header.Get(rdgConnectionIdKey)
 	x, found := c.Get(connId)
@@ -79,11 +86,15 @@ func (g *Gateway) HandleGatewayProtocol(w http.ResponseWriter, r *http.Request) 
 	switch r.Method {
 
 	case MethodRDGOUT:
-		if r.Header.Get("Connection") != "upgrade" && r.Header.Get("Upgrade") != "websocket" {
+		if !websocket.IsWebSocketUpgrade(r) {
 			g.handleLegacyProtocol(w, r.WithContext(ctx), s)
 			return
 		}
 		r.Method = "GET" // force
+		upgrader := websocket.Upgrader{
+			ReadBufferSize:  conf.WebsocketReadBuffer,
+			WriteBufferSize: conf.WebsocketWriteBuffer,
+		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("Cannot upgrade falling back to old protocol: %s", err)
@@ -103,7 +114,8 @@ func (g *Gateway) HandleGatewayProtocol(w http.ResponseWriter, r *http.Request) 
 }
 
 func (g *Gateway) setSendReceiveBuffers(conn net.Conn) error {
-	if g.ServerConf.SendBuf < 1 && g.ServerConf.ReceiveBuf < 1 {
+	conf := g.serverConf()
+	if conf.SendBuf < 1 && conf.ReceiveBuf < 1 {
 		return nil
 	}
 
@@ -144,15 +156,15 @@ func (g *Gateway) setSendReceiveBuffers(conn net.Conn) error {
 	}
 	fd := int(ptrSysFd.Int())
 
-	if g.ServerConf.ReceiveBuf > 0 {
-		err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, g.ServerConf.ReceiveBuf)
+	if conf.ReceiveBuf > 0 {
+		err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, conf.ReceiveBuf)
 		if err != nil {
 			return wrapSyscallError("setsockopt", err)
 		}
 	}
 
-	if g.ServerConf.SendBuf > 0 {
-		err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, g.ServerConf.SendBuf)
+	if conf.SendBuf > 0 {
+		err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, conf.SendBuf)
 		if err != nil {
 			return wrapSyscallError("setsockopt", err)
 		}
@@ -168,7 +180,7 @@ func (g *Gateway) handleWebsocketProtocol(ctx context.Context, c *websocket.Conn
 	inout, _ := transport.NewWS(c)
 	s.TransportOut = inout
 	s.TransportIn = inout
-	handler := NewServer(s, g.ServerConf)
+	handler := NewServer(s, g.serverConf())
 	if err := handler.Process(ctx); err != nil {
 		log.Printf("Error processing handler: %s", err)
 	}
@@ -180,6 +192,7 @@ func (g *Gateway) handleWebsocketProtocol(ctx context.Context, c *websocket.Conn
 func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s *SessionInfo) {
 	log.Printf("Session %s, %t, %t", s.ConnId, s.TransportOut != nil, s.TransportIn != nil)
 
+	conf := g.serverConf()
 	switch r.Method {
 
 	case MethodRDGOUT:
@@ -222,7 +235,7 @@ func (g *Gateway) handleLegacyProtocol(w http.ResponseWriter, r *http.Request, s
 			in.Drain()
 
 			log.Printf("Legacy handshakeRequest done for client %s", common.GetClientIp(r.Context()))
-			handler := NewServer(s, g.ServerConf)
+			handler := NewServer(s, conf)
 			if err := handler.Process(r.Context()); err != nil {
 				log.Printf("Error processing handler: %s", err)
 			}

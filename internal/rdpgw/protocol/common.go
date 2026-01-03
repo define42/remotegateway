@@ -80,17 +80,11 @@ func readMessage(in transport.Transport) (pt int, n int, msg []byte, err error) 
 // createPacket wraps the data into the protocol packet
 func createPacket(pktType uint16, data []byte) (packet []byte) {
 	size := len(data) + 8
-	buf := new(bytes.Buffer)
-
-	_ = binary.Write(buf, binary.LittleEndian, uint16(pktType))
-
-	_ = binary.Write(buf, binary.LittleEndian, uint16(0)) // reserved
-
-	_ = binary.Write(buf, binary.LittleEndian, uint32(size))
-
-	_, _ = buf.Write(data)
-
-	return buf.Bytes()
+	packet = make([]byte, size)
+	binary.LittleEndian.PutUint16(packet[0:2], pktType)
+	binary.LittleEndian.PutUint32(packet[4:8], uint32(size))
+	copy(packet[8:], data)
+	return packet
 }
 
 // readHeader parses a packet and verifies its reported size
@@ -122,8 +116,8 @@ func readHeader(data []byte) (packetType uint16, size uint32, packet []byte, err
 func forward(in net.Conn, out transport.Transport) {
 	defer in.Close()
 
-	b1 := new(bytes.Buffer)
-	buf := make([]byte, 4086)
+	const maxDataSize = 32 * 1024
+	buf := make([]byte, maxDataSize)
 
 	for {
 		n, err := in.Read(buf)
@@ -131,40 +125,33 @@ func forward(in net.Conn, out transport.Transport) {
 			log.Printf("Error reading from local conn %s", err)
 			break
 		}
-		if err = binary.Write(b1, binary.LittleEndian, uint16(n)); err != nil {
-			log.Printf("Error writing to buffer %s", err)
-			break
+		if n == 0 {
+			continue
 		}
-
-		if _, err = b1.Write(buf[:n]); err != nil {
-			log.Printf("Error writing to buffer %s", err)
-			break
-		}
-
-		if _, err = out.WritePacket(createPacket(PKT_TYPE_DATA, b1.Bytes())); err != nil {
+		payloadSize := 2 + n
+		packetSize := 8 + payloadSize
+		packet := make([]byte, packetSize)
+		binary.LittleEndian.PutUint16(packet[0:2], PKT_TYPE_DATA)
+		binary.LittleEndian.PutUint32(packet[4:8], uint32(packetSize))
+		binary.LittleEndian.PutUint16(packet[8:10], uint16(n))
+		copy(packet[10:], buf[:n])
+		if _, err = out.WritePacket(packet); err != nil {
 			log.Printf("Error writing to transport %s", err)
 			break
 		}
-
-		b1.Reset()
 	}
 }
 
 // receive data received from the gateway client, unwrap and forward the remote desktop server
 func receive(data []byte, out net.Conn) error {
-	buf := bytes.NewReader(data)
-
-	var cblen uint16
-	if err := binary.Read(buf, binary.LittleEndian, &cblen); err != nil {
-		return err
+	if len(data) < 2 {
+		return io.ErrUnexpectedEOF
 	}
-
-	pkt := make([]byte, cblen)
-
-	if err := binary.Read(buf, binary.LittleEndian, &pkt); err != nil {
-		return err
+	cblen := binary.LittleEndian.Uint16(data[:2])
+	if int(cblen) > len(data)-2 {
+		return io.ErrUnexpectedEOF
 	}
-	_, err := out.Write(pkt)
+	_, err := out.Write(data[2 : 2+int(cblen)])
 	return err
 }
 
