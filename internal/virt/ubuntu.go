@@ -17,7 +17,7 @@ func UbuntuDomain(name, seedIso string) string {
     <boot dev='hd'/>
   </os>
 
-  <cpu mode='host-passthrough'/>
+  <cpu mode='host-passthrough' check='none'/>
 
   <features>
     <acpi/>
@@ -56,7 +56,7 @@ func UbuntuDomain(name, seedIso string) string {
 
     <!-- Video -->
     <video>
-      <model type='qxl' ram='131072' vram='131072' vgamem='131072' heads='1'/>
+      <model type='virtio' heads='1' primary='yes'/>
     </video>
 
     <!-- Console -->

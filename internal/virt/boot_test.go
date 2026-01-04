@@ -15,7 +15,9 @@ const (
 )
 
 func TestStartVM(t *testing.T) {
+
 	settings := config.NewSettingType(false)
+
 	if err := virt.InitVirt(settings); err != nil {
 		log.Fatalf("Failed to initialize virtualization: %v", err)
 	}
