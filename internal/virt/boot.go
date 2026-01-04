@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
+	"path"
 	"remotegateway/internal/config"
 	"remotegateway/internal/types"
 
@@ -14,9 +16,9 @@ import (
 const (
 	// LibvirtURI is the URI used to connect to libvirt
 	DEFAULT_VIRT_STORAGE = "default"
-	BASE_IMAGE           = "noble-desktop-cloudimg-amd64.img"
+	//BASE_IMAGE           = "noble-desktop-cloudimg-amd64.img"
 
-	BASE_IMAGE_URL = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+	//BASE_IMAGE_URL = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 )
 
 // startVM starts a libvirt VM by name if it is not already running
@@ -226,6 +228,14 @@ func InitVirt(settings *config.SettingsType) error {
 	}
 	defer conn.Close()
 
+	baseImageUrl := settings.Get(config.BASE_IMAGE_URL)
+
+	u, err := url.Parse(baseImageUrl)
+	if err != nil {
+		return fmt.Errorf("Failed to parse base image URL: %v", err)
+	}
+	base_image := path.Base(u.Path)
+
 	pool, err := conn.LookupStoragePoolByName(DEFAULT_VIRT_STORAGE)
 	if err != nil {
 		return fmt.Errorf("Failed to lookup storage pool %s: %v", DEFAULT_VIRT_STORAGE, err)
@@ -245,7 +255,7 @@ func InitVirt(settings *config.SettingsType) error {
 		log.Printf("Storage pool %s started", DEFAULT_VIRT_STORAGE)
 	}
 
-	baseImage := settings.Get(config.VDI_IMAGE_DIR) + "/" + BASE_IMAGE
+	baseImage := settings.Get(config.VDI_IMAGE_DIR) + "/" + base_image
 
 	// check image exists
 	if _, err := os.Stat(baseImage); os.IsNotExist(err) {
@@ -254,8 +264,8 @@ func InitVirt(settings *config.SettingsType) error {
 			return fmt.Errorf("Failed to create image directory: %v", err)
 		}
 
-		log.Printf("Base image %s not found, downloading...", BASE_IMAGE_URL)
-		if err := downloadWithProgress(BASE_IMAGE_URL, baseImage); err != nil {
+		log.Printf("Base image %s not found, downloading...", baseImageUrl)
+		if err := downloadWithProgress(baseImageUrl, baseImage); err != nil {
 			return fmt.Errorf("Failed to download base image: %v", err)
 		}
 	}
@@ -269,7 +279,15 @@ func BootNewVM(name string, user *types.User, settings *config.SettingsType) (vm
 
 	seedIso := vmName + "_seed.iso"
 
-	baseImage := settings.Get(config.VDI_IMAGE_DIR) + "/" + BASE_IMAGE
+	baseImageUrl := settings.Get(config.BASE_IMAGE_URL)
+
+	u, err := url.Parse(baseImageUrl)
+	if err != nil {
+		return vmName, fmt.Errorf("Failed to parse base image URL: %v", err)
+	}
+	base_image := path.Base(u.Path)
+
+	baseImage := settings.Get(config.VDI_IMAGE_DIR) + "/" + base_image
 
 	conn, err := libvirt.NewConnect(LibvirtURI())
 	if err != nil {

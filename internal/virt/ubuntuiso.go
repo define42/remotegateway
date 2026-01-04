@@ -30,87 +30,11 @@ users:
     lock_passwd: false
     passwd: ` + cloudInitPasswordHash + `
 ssh_pwauth: true
-package_update: true
-package_upgrade: true
-packages:
-  - xfce4
-  - xfce4-goodies
-  - xfce4-terminal
-  - lightdm
-  - lightdm-gtk-greeter
-  - xauth
-  - xserver-xorg-input-libinput
-  - xserver-xorg-legacy
-  - xrdp
-  - xorgxrdp
-  - dbus-x11
-
-write_files:
-  # Use XFCE for XRDP sessions
-  - path: /home/` + username + `/.xsession
-    owner: ` + username + `:` + username + `
-    permissions: '0755'
-    content: |
-      startxfce4
-
-  # LightDM config for XFCE
-  - path: /etc/lightdm/lightdm.conf.d/50-xfce.conf
-    permissions: '0644'
-    content: |
-      [Seat:*]
-      greeter-session=lightdm-gtk-greeter
-      user-session=xfce
-
-  # Make LightDM the default display manager
-  - path: /etc/X11/default-display-manager
-    permissions: '0644'
-    content: |
-      /usr/sbin/lightdm
-
-  # Allow XRDP to launch Xorg for non-console users
-  - path: /etc/X11/Xwrapper.config
-    permissions: '0644'
-    content: |
-      allowed_users=anybody
-      needs_root_rights=yes
-
-  # Force XRDP sessions to start XFCE
-  - path: /etc/xrdp/startwm.sh
-    permissions: '0755'
-    content: |
-      #!/bin/sh
-      if [ -r /etc/profile ]; then
-        . /etc/profile
-      fi
-      if [ -r ~/.profile ]; then
-        . ~/.profile
-      fi
-      exec startxfce4
-
-  # Disable AppArmor at kernel level
-  - path: /etc/default/grub.d/99-disable-apparmor.cfg
-    permissions: '0644'
-    content: |
-      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT apparmor=0"
-
-  # Reduce Firefox CPU usage under XRDP
-  - path: /etc/firefox/policies/policies.json
-    permissions: '0644'
-    content: |
-      {
-        "policies": {
-          "DisableHardwareAcceleration": true,
-          "Preferences": {
-            "layers.acceleration.disabled": { "Value": true, "Status": "locked" },
-            "gfx.webrender.enabled": { "Value": false, "Status": "locked" },
-            "gfx.webrender.all": { "Value": false, "Status": "locked" }
-          }
-        }
-      }
 
 runcmd:
   # Ensure runtime dirs and X authority can be created
   - chmod 1777 /tmp /var/tmp
+  - test -f /home/` + username + `/.xsession || cp /etc/skel/.xsession /home/` + username + `/.xsession
   - chown -R ` + username + `:` + username + ` /home/` + username + `
   - rm -f /home/` + username + `/.Xauthority /home/` + username + `/.ICEauthority
 

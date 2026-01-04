@@ -35,6 +35,7 @@ func NewSettingType(print bool) *SettingsType {
 	s.Set(RDPGW_RECV_BUF, "RD Gateway socket receive buffer size (bytes)", "1048576")
 	s.Set(RDPGW_WS_READ_BUF, "RD Gateway websocket read buffer size (bytes)", "65536")
 	s.Set(RDPGW_WS_WRITE_BUF, "RD Gateway websocket write buffer size (bytes)", "65536")
+	s.Set(BASE_IMAGE_URL, "URL to download base VDI image if not found locally", "https://github.com/define42/ubuntu-desktop-cloud-image/releases/download/v0.0.22/noble-desktop-cloudimg-amd64-v0.0.22.img")
 
 	if print {
 		table := tablewriter.NewWriter(os.Stdout)
@@ -90,4 +91,5 @@ const (
 	RDPGW_RECV_BUF       = "RDPGW_RECV_BUF"
 	RDPGW_WS_READ_BUF    = "RDPGW_WS_READ_BUF"
 	RDPGW_WS_WRITE_BUF   = "RDPGW_WS_WRITE_BUF"
+	BASE_IMAGE_URL       = "BASE_IMAGE_URL"
 )
