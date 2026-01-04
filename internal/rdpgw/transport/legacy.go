@@ -12,14 +12,16 @@ import (
 )
 
 const (
-	crlf   = "\r\n"
-	HttpOK = "HTTP/1.1 200 OK\r\n"
+	crlf              = "\r\n"
+	HttpOK            = "HTTP/1.1 200 OK\r\n"
+	legacyReadBufSize = 64 * 1024
 )
 
 type LegacyPKT struct {
 	Conn          net.Conn
 	ChunkedReader io.Reader
 	Writer        *bufio.Writer
+	readBuf       []byte
 }
 
 func NewLegacy(w http.ResponseWriter) (*LegacyPKT, error) {
@@ -30,6 +32,7 @@ func NewLegacy(w http.ResponseWriter) (*LegacyPKT, error) {
 			Conn:          conn,
 			ChunkedReader: httputil.NewChunkedReader(rw.Reader),
 			Writer:        rw.Writer,
+			readBuf:       make([]byte, legacyReadBufSize),
 		}
 		return l, err
 	}
@@ -38,12 +41,11 @@ func NewLegacy(w http.ResponseWriter) (*LegacyPKT, error) {
 }
 
 func (t *LegacyPKT) ReadPacket() (n int, p []byte, err error) {
-	buf := make([]byte, 4096) // bufio.defaultBufSize
-	n, err = t.ChunkedReader.Read(buf)
-	p = make([]byte, n)
-	copy(p, buf)
-
-	return n, p, err
+	if t.readBuf == nil {
+		t.readBuf = make([]byte, legacyReadBufSize)
+	}
+	n, err = t.ChunkedReader.Read(t.readBuf)
+	return n, t.readBuf[:n], err
 }
 
 func (t *LegacyPKT) WritePacket(b []byte) (n int, err error) {

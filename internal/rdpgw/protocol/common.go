@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -41,39 +40,50 @@ type SessionInfo struct {
 // at most the bytes that have been reported by the packet
 func readMessage(in transport.Transport) (pt int, n int, msg []byte, err error) {
 	fragment := false
-	index := 0
-	buf := make([]byte, 4096)
+	const fragmentBufSize = 64 * 1024
+	var fragmentBuf [fragmentBufSize]byte
+	fragmentData := fragmentBuf[:0]
 
 	for {
 		size, pkt, err := in.ReadPacket()
 		if err != nil {
 			return 0, 0, []byte{0, 0}, err
 		}
+		segment := pkt[:size]
 
 		// check for fragments
-		var pt uint16
-		var sz uint32
-		var msg []byte
-
 		if !fragment {
+			var pt uint16
+			var sz uint32
+			var msg []byte
 			pt, sz, msg, err = readHeader(pkt[:size])
 			if err != nil {
 				fragment = true
-				index = copy(buf, pkt[:size])
+				if size > cap(fragmentData) {
+					fragmentData = append(fragmentData[:0], segment...)
+				} else {
+					fragmentData = fragmentData[:size]
+					copy(fragmentData, segment)
+				}
 				continue
 			}
-			index = 0
-		} else {
-			fragment = false
-			pt, sz, msg, err = readHeader(append(buf[:index], pkt[:size]...))
-			// header is corrupted even after defragmenting
-			if err != nil {
-				return 0, 0, []byte{0, 0}, err
-			}
-		}
-		if !fragment {
 			return int(pt), int(sz), msg, nil
 		}
+
+		fragment = false
+		var data []byte
+		if len(fragmentData)+size <= cap(fragmentData) {
+			data = fragmentData[:len(fragmentData)+size]
+			copy(data[len(fragmentData):], segment)
+		} else {
+			data = append(fragmentData, segment...)
+		}
+		pt, sz, msg, err := readHeader(data)
+		// header is corrupted even after defragmenting
+		if err != nil {
+			return 0, 0, []byte{0, 0}, err
+		}
+		return int(pt), int(sz), msg, nil
 	}
 }
 
@@ -93,18 +103,8 @@ func readHeader(data []byte) (packetType uint16, size uint32, packet []byte, err
 	if len(data) < 8 {
 		return 0, 0, nil, errors.New("header too short, fragment likely")
 	}
-	r := bytes.NewReader(data)
-	if err = binary.Read(r, binary.LittleEndian, &packetType); err != nil {
-		return 0, 0, nil, err
-	}
-
-	if _, err = r.Seek(4, io.SeekStart); err != nil {
-		return 0, 0, nil, err
-	}
-
-	if err = binary.Read(r, binary.LittleEndian, &size); err != nil {
-		return 0, 0, nil, err
-	}
+	packetType = binary.LittleEndian.Uint16(data[0:2])
+	size = binary.LittleEndian.Uint32(data[4:8])
 
 	if len(data) < int(size) {
 		return packetType, size, data[8:], errors.New("data incomplete, fragment received")
@@ -118,6 +118,7 @@ func forward(in net.Conn, out transport.Transport) {
 
 	const maxDataSize = 32 * 1024
 	buf := make([]byte, maxDataSize)
+	packetBuf := make([]byte, 8+2+maxDataSize)
 
 	for {
 		n, err := in.Read(buf)
@@ -130,8 +131,9 @@ func forward(in net.Conn, out transport.Transport) {
 		}
 		payloadSize := 2 + n
 		packetSize := 8 + payloadSize
-		packet := make([]byte, packetSize)
+		packet := packetBuf[:packetSize]
 		binary.LittleEndian.PutUint16(packet[0:2], PKT_TYPE_DATA)
+		binary.LittleEndian.PutUint16(packet[2:4], 0)
 		binary.LittleEndian.PutUint32(packet[4:8], uint32(packetSize))
 		binary.LittleEndian.PutUint16(packet[8:10], uint16(n))
 		copy(packet[10:], buf[:n])

@@ -56,7 +56,7 @@ func UbuntuDomain(name, seedIso string) string {
 
     <!-- Video -->
     <video>
-      <model type='virtio' heads='1'/>
+      <model type='qxl' ram='131072' vram='131072' vgamem='131072' heads='1'/>
     </video>
 
     <!-- Console -->

@@ -1,6 +1,7 @@
 package virt_test
 
 import (
+	"log"
 	"remotegateway/internal/config"
 	typesUser "remotegateway/internal/types"
 	"remotegateway/internal/virt"
@@ -14,12 +15,16 @@ const (
 )
 
 func TestStartVM(t *testing.T) {
+	settings := config.NewSettingType(false)
+	if err := virt.InitVirt(settings); err != nil {
+		log.Fatalf("Failed to initialize virtualization: %v", err)
+	}
 
 	user, err := typesUser.NewUser(testUsername, testPassword, "")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
-	settings := config.NewSettingType(false)
+
 	vmName, err := virt.BootNewVM(testVMName, user, settings)
 	if err != nil {
 		t.Fatalf("Failed to boot new VM %s: %v", vmName, err)
