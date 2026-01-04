@@ -17,7 +17,7 @@ func UbuntuDomain(name, seedIso string) string {
     <boot dev='hd'/>
   </os>
 
-  <cpu mode='host-passthrough'/>
+  <cpu mode='host-passthrough' check='none'/>
 
   <features>
     <acpi/>

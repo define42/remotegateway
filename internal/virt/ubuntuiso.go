@@ -114,6 +114,10 @@ runcmd:
   - chown -R ` + username + `:` + username + ` /home/` + username + `
   - rm -f /home/` + username + `/.Xauthority /home/` + username + `/.ICEauthority
 
+  # Apply Firefox policy for Snap (Ubuntu default)
+  - mkdir -p /var/snap/firefox/common/policies
+  - cp /etc/firefox/policies/policies.json /var/snap/firefox/common/policies/policies.json
+
   # Enable XRDP
   - usermod -aG ssl-cert xrdp
   - systemctl enable xrdp
