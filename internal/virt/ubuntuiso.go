@@ -30,34 +30,6 @@ users:
     lock_passwd: false
     passwd: ` + cloudInitPasswordHash + `
 ssh_pwauth: true
-
-runcmd:
-  # Ensure runtime dirs and X authority can be created
-  - chmod 1777 /tmp /var/tmp
-  - test -f /home/` + username + `/.xsession || cp /etc/skel/.xsession /home/` + username + `/.xsession
-  - chown -R ` + username + `:` + username + ` /home/` + username + `
-  - rm -f /home/` + username + `/.Xauthority /home/` + username + `/.ICEauthority
-
-  # Apply Firefox policy for Snap (Ubuntu default)
-  - mkdir -p /var/snap/firefox/common/policies
-  - cp /etc/firefox/policies/policies.json /var/snap/firefox/common/policies/policies.json
-
-  # Enable XRDP
-  - usermod -aG ssl-cert xrdp
-  - systemctl enable xrdp
-  - systemctl restart xrdp
-
-  # Prefer LightDM/XFCE for local UI
-  - systemctl disable --now gdm3 || true
-  - systemctl mask gdm3 || true
-  - systemctl set-default graphical.target || true
-
-  # Disable AppArmor service immediately (kernel param applies after reboot)
-  - systemctl disable --now apparmor || true
-
-  # Update GRUB and reboot to apply kernel params
-  - update-grub
-  - reboot
 `)
 
 	fmt.Println("userData:", string(userData))
