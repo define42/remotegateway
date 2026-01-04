@@ -16,7 +16,7 @@ const (
 	DEFAULT_VIRT_STORAGE = "default"
 	BASE_IMAGE           = "noble-desktop-cloudimg-amd64.img"
 
-	BASE_IMAGE_URL = "https://github.com/define42/ubuntu-desktop-cloud-image/releases/download/v0.0.11/noble-desktop-cloudimg-amd64.img"
+	BASE_IMAGE_URL = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 )
 
 // startVM starts a libvirt VM by name if it is not already running

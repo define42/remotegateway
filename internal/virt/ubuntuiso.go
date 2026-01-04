@@ -33,37 +33,59 @@ ssh_pwauth: true
 package_update: true
 package_upgrade: true
 packages:
-  - gnome-session
-  - gnome-shell
-  - gnome-terminal
-  - gdm3
+  - xfce4
+  - xfce4-goodies
+  - xfce4-terminal
+  - lightdm
+  - lightdm-gtk-greeter
+  - xauth
+  - xserver-xorg-input-libinput
+  - xserver-xorg-legacy
   - xrdp
   - xorgxrdp
   - dbus-x11
 
 write_files:
-  # Disable Wayland (XRDP requires Xorg)
-  - path: /etc/gdm3/custom.conf
-    permissions: '0644'
+  # Use XFCE for XRDP sessions
+  - path: /home/` + username + `/.xsession
+    owner: ` + username + `:` + username + `
+    permissions: '0755'
     content: |
-      [daemon]
-      WaylandEnable=false
-      DefaultSession=gnome-xorg.desktop
+      startxfce4
 
-  # Force GNOME to behave well under XRDP
-  - path: /etc/profile.d/gnome-xrdp.sh
+  # LightDM config for XFCE
+  - path: /etc/lightdm/lightdm.conf.d/50-xfce.conf
     permissions: '0644'
     content: |
-      export XDG_SESSION_TYPE=x11
-      export GSK_RENDERER=cairo
-      export MUTTER_DEBUG_FORCE_KMS_MODE=simple
+      [Seat:*]
+      greeter-session=lightdm-gtk-greeter
+      user-session=xfce
 
-  # Disable GNOME portal backend globally (avoid timeouts)
-  - path: /etc/systemd/user/xdg-desktop-portal-gnome.service
+  # Make LightDM the default display manager
+  - path: /etc/X11/default-display-manager
     permissions: '0644'
     content: |
-      [Unit]
-      Description=Disabled for XRDP
+      /usr/sbin/lightdm
+
+  # Allow XRDP to launch Xorg for non-console users
+  - path: /etc/X11/Xwrapper.config
+    permissions: '0644'
+    content: |
+      allowed_users=anybody
+      needs_root_rights=yes
+
+  # Force XRDP sessions to start XFCE
+  - path: /etc/xrdp/startwm.sh
+    permissions: '0755'
+    content: |
+      #!/bin/sh
+      if [ -r /etc/profile ]; then
+        . /etc/profile
+      fi
+      if [ -r ~/.profile ]; then
+        . ~/.profile
+      fi
+      exec startxfce4
 
   # Disable AppArmor at kernel level
   - path: /etc/default/grub.d/99-disable-apparmor.cfg
@@ -71,16 +93,39 @@ write_files:
     content: |
       GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT apparmor=0"
 
+  # Reduce Firefox CPU usage under XRDP
+  - path: /etc/firefox/policies/policies.json
+    permissions: '0644'
+    content: |
+      {
+        "policies": {
+          "DisableHardwareAcceleration": true,
+          "Preferences": {
+            "layers.acceleration.disabled": { "Value": true, "Status": "locked" },
+            "gfx.webrender.enabled": { "Value": false, "Status": "locked" },
+            "gfx.webrender.all": { "Value": false, "Status": "locked" }
+          }
+        }
+      }
+
 runcmd:
+  # Ensure runtime dirs and X authority can be created
+  - chmod 1777 /tmp /var/tmp
+  - chown -R ` + username + `:` + username + ` /home/` + username + `
+  - rm -f /home/` + username + `/.Xauthority /home/` + username + `/.ICEauthority
+
   # Enable XRDP
+  - usermod -aG ssl-cert xrdp
   - systemctl enable xrdp
   - systemctl restart xrdp
 
+  # Prefer LightDM/XFCE for local UI
+  - systemctl disable --now gdm3 || true
+  - systemctl mask gdm3 || true
+  - systemctl set-default graphical.target || true
+
   # Disable AppArmor service immediately (kernel param applies after reboot)
   - systemctl disable --now apparmor || true
-
-  # Mask GNOME portal backend globally
-  - systemctl --global mask xdg-desktop-portal-gnome.service
 
   # Update GRUB and reboot to apply kernel params
   - update-grub
