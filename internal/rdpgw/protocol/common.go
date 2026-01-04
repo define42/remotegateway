@@ -70,7 +70,7 @@ func readMessage(in transport.Transport) (pt int, n int, msg []byte, err error) 
 			return int(pt), int(sz), msg, nil
 		}
 
-		fragment = false
+		//fragment = false
 		var data []byte
 		if len(fragmentData)+size <= cap(fragmentData) {
 			data = fragmentData[:len(fragmentData)+size]
